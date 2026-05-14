@@ -1,0 +1,12 @@
+{
+  "type": "conjecture",
+  "player": "codex-red",
+  "name": "too_broad_flower_growth",
+  "description": "This omits the stone blocker and is intentionally false.",
+  "if": [
+    {"target_is": "."},
+    {"exists": {"symbol": "W", "relation": "diagonal"}},
+    {"exists": {"symbol": "F", "relation": "orthogonal"}}
+  ],
+  "then": {"target_becomes": "F"}
+}

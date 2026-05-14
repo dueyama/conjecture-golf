@@ -1,0 +1,3 @@
+{"type":"conjecture","player":"codex-green","name":"trapped_water_evaporates","if":[{"target_is":"W"},{"not_exists":{"symbol":".","relation":"orthogonal"}}],"then":{"target_becomes":"."}}
+{"type":"conjecture","player":"codex-yellow","name":"any_water_evaporates","if":[{"target_is":"W"}],"then":{"target_becomes":"."}}
+{"type":"counterexample","player":"codex-blue","against":"any_water_evaporates","before":[".....",".....","..W..",".....","....."]}

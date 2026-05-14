@@ -1,0 +1,10 @@
+{
+  "type": "conjecture",
+  "player": "codex-green",
+  "name": "trapped_water_evaporates",
+  "if": [
+    {"target_is": "W"},
+    {"not_exists": {"symbol": ".", "relation": "orthogonal"}}
+  ],
+  "then": {"target_becomes": "."}
+}

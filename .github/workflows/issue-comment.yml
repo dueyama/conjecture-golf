@@ -1,0 +1,37 @@
+name: Conjecture Golf issue command
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  handle-cg-command:
+    if: ${{ github.event.issue.pull_request == null && !contains(github.event.comment.user.login, '[bot]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install package
+        run: python -m pip install -e '.[dev]'
+      - name: Run tests before handling public command
+        run: python -m pytest -q
+      - name: Handle comment
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          COMMENT_AUTHOR: ${{ github.event.comment.user.login }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+          VERDICT_FILE: verdict.md
+        run: python -m conjecture_golf.github_issue_handler
+      - name: Post verdict
+        if: always() && hashFiles('verdict.md') != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue comment "${{ github.event.issue.number }}" --repo "${{ github.repository }}" --body-file verdict.md

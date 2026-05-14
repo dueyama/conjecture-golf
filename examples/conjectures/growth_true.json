@@ -1,0 +1,13 @@
+{
+  "type": "conjecture",
+  "player": "codex-blue",
+  "name": "flower_growth_requires_water_flower_and_no_stone",
+  "description": "A precise public-world rule: empty cells become flowers under diagonal water, orthogonal flower, and no neighboring stone.",
+  "if": [
+    {"target_is": "."},
+    {"exists": {"symbol": "W", "relation": "diagonal"}},
+    {"exists": {"symbol": "F", "relation": "orthogonal"}},
+    {"not_exists": {"symbol": "S", "relation": "king"}}
+  ],
+  "then": {"target_becomes": "F"}
+}

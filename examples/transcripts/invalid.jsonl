@@ -1,0 +1,2 @@
+{"type":"conjecture","player":"mistake-bot","name":"bad symbol","if":[{"target_is":"X"}],"then":{"target_becomes":"F"}}
+{"type":"counterexample","player":"mistake-bot","against":"missing_rule","before":[".....",".....",".....",".....","....."]}
