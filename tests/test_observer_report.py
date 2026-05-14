@@ -1,4 +1,5 @@
 from conjecture_golf.observer_report import render_html_report, render_report
+from conjecture_golf.season_engine import load_compiled_season
 
 
 def test_observer_report_mentions_arc_and_leaderboard():
@@ -29,6 +30,31 @@ def test_observer_report_mentions_arc_and_leaderboard():
     assert "green" in report
     assert "conjecture-counterexample arc" in report
     assert "| rank | player | total |" in report
+
+
+def test_observer_report_accepts_season_spec():
+    season = load_compiled_season("seasons/season_0.json")
+    report = render_report(
+        [
+            {
+                "type": "conjecture",
+                "player": "blue",
+                "name": "flower_growth",
+                "if": [
+                    {"target_is": "."},
+                    {"exists": {"symbol": "W", "relation": "diagonal"}},
+                    {"exists": {"symbol": "F", "relation": "orthogonal"}},
+                    {"not_exists": {"symbol": "S", "relation": "king"}},
+                ],
+                "then": {"target_becomes": "F"},
+            }
+        ],
+        season_scoring=True,
+        season=season,
+    )
+
+    assert "Season: `season_0`" in report
+    assert "Season novelty" in report
 
 
 def test_observer_report_can_redact_false_conjecture_witnesses():

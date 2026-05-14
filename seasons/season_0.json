@@ -1,0 +1,77 @@
+{
+  "schema_version": "season-spec-v0.1",
+  "season_id": "season_0",
+  "title": "Season 0",
+  "summary": "The frozen calibration world used by the original hardcoded Conjecture Golf prototype.",
+  "designer": "codex",
+  "board": {
+    "width": 5,
+    "height": 5
+  },
+  "symbols": [
+    {"id": ".", "name": "empty", "description": "empty cell"},
+    {"id": "F", "name": "flower", "description": "flower"},
+    {"id": "W", "name": "water", "description": "water"},
+    {"id": "S", "name": "stone", "description": "stone"}
+  ],
+  "relations": ["orthogonal", "diagonal", "king"],
+  "transition": {
+    "default": "stay",
+    "rules": [
+      {
+        "id": "flower_growth",
+        "priority": 1,
+        "when": [
+          {"target_is": "."},
+          {"exists": {"symbol": "W", "relation": "diagonal"}},
+          {"exists": {"symbol": "F", "relation": "orthogonal"}},
+          {"not_exists": {"symbol": "S", "relation": "king"}}
+        ],
+        "becomes": "F"
+      },
+      {
+        "id": "flower_wither",
+        "priority": 2,
+        "when": [
+          {"target_is": "F"},
+          {"count_at_least": {"symbol": "S", "relation": "king", "n": 2}}
+        ],
+        "becomes": "."
+      },
+      {
+        "id": "water_spread",
+        "priority": 3,
+        "when": [
+          {"target_is": "."},
+          {"count_exactly": {"symbol": "W", "relation": "orthogonal", "n": 2}},
+          {"not_exists": {"symbol": "S", "relation": "diagonal"}}
+        ],
+        "becomes": "W"
+      },
+      {
+        "id": "trapped_water_evaporates",
+        "priority": 4,
+        "when": [
+          {"target_is": "W"},
+          {"not_exists": {"symbol": ".", "relation": "orthogonal"}}
+        ],
+        "becomes": "."
+      }
+    ]
+  },
+  "conjecture_dsl": {
+    "claim_kinds": ["sufficient", "necessary", "equivalence"],
+    "condition_kinds": ["target_is", "exists", "not_exists", "count_at_least", "count_exactly"],
+    "max_conditions": 8
+  },
+  "presentation": {
+    "redaction_policy": "redacted",
+    "observer_title": "Season 0 Arena"
+  },
+  "limits": {
+    "max_symbols": 5,
+    "max_rules": 5,
+    "max_conditions_per_rule": 8,
+    "max_local_neighborhoods": 1953125
+  }
+}

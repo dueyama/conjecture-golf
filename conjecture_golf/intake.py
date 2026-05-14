@@ -14,6 +14,8 @@ from pathlib import Path
 from typing import Any
 
 from .replay import ReplayState, apply_command, iter_jsonl, replay_records
+from .season_catalog import load_optional_compiled_season
+from .season_engine import CompiledSeason
 from .verify import redact_verdict
 from .world import ValidationError
 
@@ -57,6 +59,7 @@ def validate_move(
     *,
     min_player_interval_seconds: int = 0,
     season_scoring: bool = True,
+    season: CompiledSeason | None = None,
 ) -> tuple[ReplayState, Any]:
     transcript_path = Path(transcript_path)
     records = list(iter_jsonl(transcript_path)) if transcript_path.exists() else []
@@ -64,12 +67,14 @@ def validate_move(
         records,
         min_player_interval_seconds=min_player_interval_seconds,
         season_scoring=season_scoring,
+        season=season,
     )
     verdict = apply_command(
         state,
         move,
         min_player_interval_seconds=min_player_interval_seconds,
         season_scoring=season_scoring,
+        season=season,
     )
     return state, verdict
 
@@ -88,15 +93,18 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--no-season-scoring", action="store_true", help="Validate without season scoring.")
     parser.add_argument("--reveal-policy", choices=["full", "redacted"], default="full")
+    parser.add_argument("--season", help="Optional data-only season spec path")
     args = parser.parse_args(argv)
 
     try:
+        season = load_optional_compiled_season(args.season)
         move = prepare_move(load_move(args.move), player=args.player)
         _state, verdict = validate_move(
             args.transcript,
             move,
             min_player_interval_seconds=args.min_player_interval_seconds,
             season_scoring=not args.no_season_scoring,
+            season=season,
         )
     except ValidationError as exc:
         verdict = {

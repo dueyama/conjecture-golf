@@ -1,4 +1,5 @@
 from conjecture_golf.frontier import build_frontier_report_from_records, render_frontier_markdown
+from conjecture_golf.season_engine import load_compiled_season
 
 
 TRUE_FLOWER = {
@@ -24,3 +25,11 @@ def test_frontier_report_summarizes_open_public_coverage():
     assert report.open_frontier
     assert "Open Frontier" in markdown
     assert "local=" not in markdown
+
+
+def test_frontier_report_accepts_season_spec():
+    season = load_compiled_season("seasons/season_0.json")
+    report = build_frontier_report_from_records([TRUE_FLOWER], season=season)
+
+    assert report.covered_obligations == 4225
+    assert report.total_obligations == 524288

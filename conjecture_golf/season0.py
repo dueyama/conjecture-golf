@@ -13,6 +13,7 @@ from .match_pack import build_match_pack
 from .observer_report import render_html_report, render_report
 from .replay import iter_jsonl, replay_file
 from .score import leaderboard_rows, render_markdown
+from .season_catalog import load_optional_compiled_season
 from .season_eval import evaluate_records, render_evaluation_markdown
 
 
@@ -31,17 +32,20 @@ def _cmd_pack(args: argparse.Namespace) -> int:
         args.out,
         min_player_interval_seconds=args.min_player_interval_seconds,
         reveal_policy=args.reveal_policy,
+        season_path=args.season,
     )
     print(f"Wrote match pack to {args.out}")
     return 0
 
 
 def _cmd_apply(args: argparse.Namespace) -> int:
+    season = load_optional_compiled_season(args.season)
     move = prepare_move(load_move(args.move), player=args.player)
     _state, verdict = validate_move(
         args.transcript,
         move,
         min_player_interval_seconds=args.min_player_interval_seconds,
+        season=season,
     )
     print(json.dumps(verdict.to_dict(), ensure_ascii=False, indent=2, sort_keys=True))
     if verdict.kind == "invalid":
@@ -55,23 +59,24 @@ def _cmd_report(args: argparse.Namespace) -> int:
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     records = list(iter_jsonl(args.transcript))
+    season = load_optional_compiled_season(args.season)
 
-    state = replay_file(args.transcript, season_scoring=True)
+    state = replay_file(args.transcript, season_scoring=True, season=season)
     (out / "leaderboard.md").write_text(render_markdown(leaderboard_rows(state.scores)) + "\n", encoding="utf-8")
 
-    frontier = build_frontier_report_from_records(records)
+    frontier = build_frontier_report_from_records(records, season=season)
     (out / "frontier.md").write_text(render_frontier_markdown(frontier), encoding="utf-8")
 
     (out / "observer_report.md").write_text(
-        render_report(records, season_scoring=True, reveal_policy=args.reveal_policy),
+        render_report(records, season_scoring=True, reveal_policy=args.reveal_policy, season=season),
         encoding="utf-8",
     )
     (out / "observer_report.html").write_text(
-        render_html_report(records, season_scoring=True, reveal_policy=args.reveal_policy),
+        render_html_report(records, season_scoring=True, reveal_policy=args.reveal_policy, season=season),
         encoding="utf-8",
     )
 
-    evaluation = evaluate_records(records)
+    evaluation = evaluate_records(records, season=season)
     (out / "season_eval.md").write_text(render_evaluation_markdown(evaluation), encoding="utf-8")
     print(f"Wrote Season 0 reports to {out}")
     return 0
@@ -91,6 +96,7 @@ def main(argv: list[str] | None = None) -> int:
     pack.add_argument("--out", required=True, help="Output directory")
     pack.add_argument("--reveal-policy", choices=["full", "redacted"], default="redacted")
     pack.add_argument("--min-player-interval-seconds", type=int, default=0)
+    pack.add_argument("--season", help="Optional data-only season spec path")
     pack.set_defaults(func=_cmd_pack)
 
     apply = subparsers.add_parser("apply", help="Validate and optionally append a move.")
@@ -99,12 +105,14 @@ def main(argv: list[str] | None = None) -> int:
     apply.add_argument("--player", help="Override player name")
     apply.add_argument("--append", action="store_true", help="Append when not rejected as invalid")
     apply.add_argument("--min-player-interval-seconds", type=int, default=0)
+    apply.add_argument("--season", help="Optional data-only season spec path")
     apply.set_defaults(func=_cmd_apply)
 
     report = subparsers.add_parser("report", help="Write replay, frontier, observer, and eval reports.")
     report.add_argument("transcript", help="Transcript path")
     report.add_argument("--out", required=True, help="Output report directory")
     report.add_argument("--reveal-policy", choices=["full", "redacted"], default="redacted")
+    report.add_argument("--season", help="Optional data-only season spec path")
     report.set_defaults(func=_cmd_report)
 
     args = parser.parse_args(argv)

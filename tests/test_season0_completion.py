@@ -4,6 +4,7 @@ import re
 from pathlib import Path
 
 from conjecture_golf.replay import iter_jsonl
+from conjecture_golf.season_engine import load_compiled_season
 from conjecture_golf.season_eval import evaluate_records, main as season_eval_main
 
 
@@ -42,6 +43,14 @@ def test_season_eval_detects_deterministic_styles():
     assert data["total_moves"] == 4
     assert data["valid_conjectures"] >= 1
     assert data["has_two_distinct_strategic_styles"]
+
+
+def test_season_eval_accepts_season_spec():
+    season = load_compiled_season("seasons/season_0.json")
+    evaluation = evaluate_records(iter_jsonl("examples/transcripts/basic.jsonl"), season=season)
+
+    assert evaluation.to_dict()["season_id"] == "season_0"
+    assert evaluation.to_dict()["total_moves"] == 4
 
 
 def test_operator_runbook_references_real_conjecture_golf_modules():

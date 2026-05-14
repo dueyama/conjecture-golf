@@ -10,6 +10,8 @@ from typing import Any
 from .frontier import build_frontier_report
 from .replay import ReplayState, apply_command, iter_jsonl
 from .score import leaderboard_rows, render_markdown
+from .season_catalog import load_optional_compiled_season
+from .season_engine import CompiledSeason
 from .season import season_id
 from .verify import redact_verdict
 
@@ -142,7 +144,7 @@ def _verdict_name(verdict: Any) -> str:
     return str(verdict.kind)
 
 
-def _newspaper_items(state: ReplayState) -> dict[str, Any]:
+def _newspaper_items(state: ReplayState, *, season: CompiledSeason | None = None) -> dict[str, Any]:
     rows = leaderboard_rows(state.scores)
     accepted = [v for v in state.verdicts if v.kind == "conjecture" and v.ok]
     counterexamples = [v for v in state.verdicts if v.kind == "counterexample" and v.ok]
@@ -155,7 +157,7 @@ def _newspaper_items(state: ReplayState) -> dict[str, Any]:
 
     laws = [v for v in accepted if (v.details or {}).get("claim_kind", "sufficient") != "equivalence"]
     equivalences = [v for v in accepted if (v.details or {}).get("claim_kind") == "equivalence"]
-    frontier = build_frontier_report(state)
+    frontier = build_frontier_report(state, season=season)
 
     return {
         "leader": rows[0] if rows else None,
@@ -184,8 +186,8 @@ def _newspaper_items(state: ReplayState) -> dict[str, Any]:
     }
 
 
-def _newspaper_markdown(state: ReplayState) -> str:
-    items = _newspaper_items(state)
+def _newspaper_markdown(state: ReplayState, *, season: CompiledSeason | None = None) -> str:
+    items = _newspaper_items(state, season=season)
     lines = ["## Newspaper", ""]
     leader = items["leader"]
     if leader:
@@ -247,8 +249,8 @@ def _newspaper_markdown(state: ReplayState) -> str:
     return "\n".join(lines)
 
 
-def _newspaper_html(state: ReplayState) -> str:
-    markdown = _newspaper_markdown(state)
+def _newspaper_html(state: ReplayState, *, season: CompiledSeason | None = None) -> str:
+    markdown = _newspaper_markdown(state, season=season)
     items = [
         line[2:]
         for line in markdown.splitlines()
@@ -264,22 +266,24 @@ def render_report(
     min_player_interval_seconds: int = 0,
     season_scoring: bool = False,
     reveal_policy: str = "full",
+    season: CompiledSeason | None = None,
 ) -> str:
     state = ReplayState()
-    lines = [f"# {title}", "", f"Season: `{season_id()}`", ""]
+    lines = [f"# {title}", "", f"Season: `{season.spec.season_id if season else season_id()}`", ""]
     for move_no, command in enumerate(records, start=1):
         verdict = apply_command(
             state,
             command,
             min_player_interval_seconds=min_player_interval_seconds,
             season_scoring=season_scoring,
+            season=season,
         )
         display_verdict = redact_verdict(verdict, reveal_policy=reveal_policy)
         lines.extend(_move_summary(move_no, command, display_verdict))
         lines.append("")
 
     lines.extend(["## Leaderboard", "", render_markdown(leaderboard_rows(state.scores)), ""])
-    lines.append(_newspaper_markdown(state))
+    lines.append(_newspaper_markdown(state, season=season))
     lines.extend(["## Interesting Points", ""])
     lines.extend(f"- {point}" for point in _interesting_points(state))
     lines.extend(
@@ -368,6 +372,7 @@ def render_html_report(
     min_player_interval_seconds: int = 0,
     season_scoring: bool = False,
     reveal_policy: str = "full",
+    season: CompiledSeason | None = None,
 ) -> str:
     state = ReplayState()
     moves: list[str] = []
@@ -377,13 +382,14 @@ def render_html_report(
             command,
             min_player_interval_seconds=min_player_interval_seconds,
             season_scoring=season_scoring,
+            season=season,
         )
         display_verdict = redact_verdict(verdict, reveal_policy=reveal_policy)
         moves.append(_move_html(move_no, command, display_verdict))
 
     rows = leaderboard_rows(state.scores)
     points = "\n".join(f"<li>{html.escape(point)}</li>" for point in _interesting_points(state))
-    newspaper = _newspaper_html(state)
+    newspaper = _newspaper_html(state, season=season)
     return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -419,7 +425,7 @@ def render_html_report(
 <body>
   <main>
     <h1>{html.escape(title)}</h1>
-    <p>Season: <code>{html.escape(season_id())}</code></p>
+    <p>Season: <code>{html.escape(season.spec.season_id if season else season_id())}</code></p>
     <section>
       <h2>Moves</h2>
       {"".join(moves)}
@@ -454,7 +460,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--season-scoring", action="store_true", help="Apply season novelty scoring.")
     parser.add_argument("--reveal-policy", choices=["full", "redacted"], default="full")
+    parser.add_argument("--season", help="Optional data-only season spec path")
     args = parser.parse_args(argv)
+    season = load_optional_compiled_season(args.season)
     renderer = render_html_report if args.format == "html" else render_report
     print(
         renderer(
@@ -462,6 +470,7 @@ def main(argv: list[str] | None = None) -> int:
             min_player_interval_seconds=args.min_player_interval_seconds,
             season_scoring=args.season_scoring,
             reveal_policy=args.reveal_policy,
+            season=season,
         )
     )
     return 0

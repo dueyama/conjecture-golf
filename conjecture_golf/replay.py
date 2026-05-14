@@ -17,6 +17,8 @@ from .dsl import player_name_from_submission, validate_conjecture
 from .canonical import witness_id
 from .obligations import ObligationLedger, obligation_ids_for_conjecture, summarize_obligation_ids
 from .score import PlayerScore, apply_verdict, leaderboard_rows, render_markdown
+from .season_catalog import load_optional_compiled_season
+from .season_engine import CompiledSeason
 from .verify import Verdict, check_counterexample, verify_conjecture
 from .world import ValidationError
 
@@ -53,8 +55,8 @@ def _canonical_json(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 
-def _conjecture_signature(conjecture: Mapping[str, Any]) -> str:
-    normalized = validate_conjecture(conjecture)
+def _conjecture_signature(conjecture: Mapping[str, Any], *, season: CompiledSeason | None = None) -> str:
+    normalized = season.validate_conjecture(conjecture) if season is not None else validate_conjecture(conjecture)
     return _canonical_json(
         {
             "claim_kind": normalized.get("claim_kind", "sufficient"),
@@ -215,11 +217,17 @@ def _obligation_counts(obligations: frozenset[str]) -> dict[str, int]:
     }
 
 
-def _season_adjust_conjecture(state: ReplayState, verdict: Verdict, conjecture: Mapping[str, Any]) -> Verdict:
+def _season_adjust_conjecture(
+    state: ReplayState,
+    verdict: Verdict,
+    conjecture: Mapping[str, Any],
+    *,
+    season: CompiledSeason | None = None,
+) -> Verdict:
     _remember_false_conjecture_counterexample(state, verdict)
     if verdict.kind != "conjecture" or not verdict.ok:
         try:
-            obligations = obligation_ids_for_conjecture(conjecture)
+            obligations = obligation_ids_for_conjecture(conjecture, season=season)
         except ValidationError:
             return verdict
         details = verdict.details or {}
@@ -241,7 +249,7 @@ def _season_adjust_conjecture(state: ReplayState, verdict: Verdict, conjecture: 
             },
         )
 
-    signature = _conjecture_signature(conjecture)
+    signature = _conjecture_signature(conjecture, season=season)
     if signature in state.conjecture_signatures:
         return Verdict(
             ok=False,
@@ -259,7 +267,7 @@ def _season_adjust_conjecture(state: ReplayState, verdict: Verdict, conjecture: 
             },
         )
 
-    obligations = obligation_ids_for_conjecture(conjecture)
+    obligations = obligation_ids_for_conjecture(conjecture, season=season)
     coverage = state.obligation_ledger.measure(obligations)
     new_counts = _obligation_counts(coverage.new_obligations)
     stale_counts = _obligation_counts(coverage.stale_obligations)
@@ -444,10 +452,11 @@ def _apply_verdict(
     *,
     season_scoring: bool,
     conjecture: Mapping[str, Any] | None = None,
+    season: CompiledSeason | None = None,
 ) -> Verdict:
     adjusted = verdict
     if season_scoring and conjecture is not None:
-        adjusted = _season_adjust_conjecture(state, adjusted, conjecture)
+        adjusted = _season_adjust_conjecture(state, adjusted, conjecture, season=season)
     elif season_scoring:
         _remember_false_conjecture_counterexample(state, adjusted)
         adjusted = _season_adjust_counterexample(state, adjusted, command)
@@ -461,6 +470,7 @@ def apply_command(
     *,
     min_player_interval_seconds: int = 0,
     season_scoring: bool = False,
+    season: CompiledSeason | None = None,
 ) -> Verdict:
     try:
         command = normalize_command(command)
@@ -482,14 +492,14 @@ def apply_command(
                     conjecture["player"] = command["player"]
             else:
                 conjecture = {k: v for k, v in command.items() if k != "type"}
-            normalized = validate_conjecture(conjecture)
+            normalized = season.validate_conjecture(conjecture) if season is not None else validate_conjecture(conjecture)
             # Store every well-formed conjecture, even if the verifier can already
             # refute it. This makes the public transcript meaningful: other agents
             # may still earn points by submitting compact counterexamples against
             # a flawed conjecture. Invalid-schema conjectures are not stored.
-            verdict = verify_conjecture(normalized)
+            verdict = verify_conjecture(normalized, season=season)
             state.conjectures[normalized["name"]] = normalized
-            return _apply_verdict(state, command, verdict, season_scoring=season_scoring, conjecture=normalized)
+            return _apply_verdict(state, command, verdict, season_scoring=season_scoring, conjecture=normalized, season=season)
 
         if command_type == "counterexample":
             against = command.get("against")
@@ -506,8 +516,8 @@ def apply_command(
             # The counterexample finder, not the conjecture author, receives score.
             if "player" in command:
                 conjecture["player"] = player_name_from_submission(command)
-            verdict = check_counterexample(conjecture, before)
-            return _apply_verdict(state, command, verdict, season_scoring=season_scoring)
+            verdict = check_counterexample(conjecture, before, season=season)
+            return _apply_verdict(state, command, verdict, season_scoring=season_scoring, season=season)
 
         if command_type == "score":
             rows = leaderboard_rows(state.scores)
@@ -519,7 +529,7 @@ def apply_command(
                 score_delta=0,
                 details={"leaderboard": rows},
             )
-            return _apply_verdict(state, command, verdict, season_scoring=season_scoring)
+            return _apply_verdict(state, command, verdict, season_scoring=season_scoring, season=season)
 
         if command_type == "invalid":
             verdict = Verdict(
@@ -530,7 +540,7 @@ def apply_command(
                 score_delta=-5,
                 details={"reason": command.get("reason", "invalid_command")},
             )
-            return _apply_verdict(state, command, verdict, season_scoring=season_scoring)
+            return _apply_verdict(state, command, verdict, season_scoring=season_scoring, season=season)
 
         raise AssertionError("unreachable")
     except ValidationError as exc:
@@ -559,6 +569,7 @@ def replay_records(
     *,
     min_player_interval_seconds: int = 0,
     season_scoring: bool = False,
+    season: CompiledSeason | None = None,
 ) -> ReplayState:
     state = ReplayState()
     for record in records:
@@ -567,6 +578,7 @@ def replay_records(
             record,
             min_player_interval_seconds=min_player_interval_seconds,
             season_scoring=season_scoring,
+            season=season,
         )
     return state
 
@@ -576,11 +588,13 @@ def replay_file(
     *,
     min_player_interval_seconds: int = 0,
     season_scoring: bool = False,
+    season: CompiledSeason | None = None,
 ) -> ReplayState:
     return replay_records(
         iter_jsonl(path),
         min_player_interval_seconds=min_player_interval_seconds,
         season_scoring=season_scoring,
+        season=season,
     )
 
 
@@ -595,11 +609,14 @@ def main(argv: list[str] | None = None) -> int:
         help="Reject commands from the same player submitted sooner than this many seconds apart.",
     )
     parser.add_argument("--season-scoring", action="store_true", help="Reward only novel season progress.")
+    parser.add_argument("--season", help="Optional data-only season spec path")
     args = parser.parse_args(argv)
+    season = load_optional_compiled_season(args.season)
     state = replay_file(
         args.path,
         min_player_interval_seconds=args.min_player_interval_seconds,
         season_scoring=args.season_scoring,
+        season=season,
     )
     rows = leaderboard_rows(state.scores)
     if args.json:

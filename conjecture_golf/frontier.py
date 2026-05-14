@@ -14,8 +14,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .obligations import all_local_obligation_ids, summarize_obligation_ids
+from .obligations import all_local_obligation_ids, all_local_obligation_ids_for_season, summarize_obligation_ids
 from .replay import ReplayState, iter_jsonl, replay_records
+from .season_catalog import load_optional_compiled_season
+from .season_engine import CompiledSeason
 from .season import season_id
 
 
@@ -89,8 +91,8 @@ def _stale_traps(
     return sorted(rows, key=lambda row: (-row["coverage_ratio"], row["uncovered"], row["claim_kind"], row["transition"]))[:limit]
 
 
-def build_frontier_report(state: ReplayState) -> FrontierReport:
-    universe = all_local_obligation_ids()
+def build_frontier_report(state: ReplayState, *, season: CompiledSeason | None = None) -> FrontierReport:
+    universe = all_local_obligation_ids_for_season(season) if season is not None else all_local_obligation_ids()
     covered = frozenset(item for item in state.obligation_ledger.covered if item in universe)
     uncovered = universe - covered
     covered_summary = summarize_obligation_ids(covered)
@@ -114,21 +116,28 @@ def build_frontier_report_from_records(
     *,
     min_player_interval_seconds: int = 0,
     season_scoring: bool = True,
+    season: CompiledSeason | None = None,
 ) -> FrontierReport:
     state = replay_records(
         records,
         min_player_interval_seconds=min_player_interval_seconds,
         season_scoring=season_scoring,
+        season=season,
     )
-    return build_frontier_report(state)
+    return build_frontier_report(state, season=season)
 
 
-def render_frontier_markdown(report: FrontierReport, *, title: str = "Obligation Frontier") -> str:
+def render_frontier_markdown(
+    report: FrontierReport,
+    *,
+    title: str = "Obligation Frontier",
+    display_season_id: str | None = None,
+) -> str:
     data = report.to_dict()
     lines = [
         f"# {title}",
         "",
-        f"Season: `{season_id()}`",
+        f"Season: `{display_season_id or season_id()}`",
         "",
         "| metric | value |",
         "| --- | ---: |",
@@ -188,17 +197,20 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Replay without season scoring before computing coverage.",
     )
+    parser.add_argument("--season", help="Optional data-only season spec path")
     args = parser.parse_args(argv)
+    season = load_optional_compiled_season(args.season)
     records = list(iter_jsonl(args.path))
     report = build_frontier_report_from_records(
         records,
         min_player_interval_seconds=args.min_player_interval_seconds,
         season_scoring=not args.no_season_scoring,
+        season=season,
     )
     if args.json:
         print(json.dumps(report.to_dict(), ensure_ascii=False, indent=2, sort_keys=True))
     else:
-        print(render_frontier_markdown(report))
+        print(render_frontier_markdown(report, display_season_id=season.spec.season_id if season else None))
     return 0
 
 

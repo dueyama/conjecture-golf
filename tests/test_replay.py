@@ -1,5 +1,6 @@
 from conjecture_golf.replay import apply_command, replay_file, replay_records, ReplayState
 from conjecture_golf.score import leaderboard_rows
+from conjecture_golf.season_engine import load_compiled_season
 
 
 TRUE_FLOWER = {
@@ -29,6 +30,14 @@ def test_replay_basic_transcript_is_deterministic():
     a = replay_file("examples/transcripts/basic.jsonl")
     b = replay_file("examples/transcripts/basic.jsonl")
     assert [v.to_dict() for v in a.verdicts] == [v.to_dict() for v in b.verdicts]
+
+
+def test_replay_basic_transcript_with_season_spec_matches_default_scores():
+    season = load_compiled_season("seasons/season_0.json")
+    default = replay_file("examples/transcripts/basic.jsonl", season_scoring=True)
+    explicit = replay_file("examples/transcripts/basic.jsonl", season_scoring=True, season=season)
+
+    assert leaderboard_rows(default.scores) == leaderboard_rows(explicit.scores)
 
 
 def test_counterexample_can_target_prior_false_conjecture():

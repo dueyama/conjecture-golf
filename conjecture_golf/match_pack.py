@@ -12,6 +12,7 @@ from .frontier import build_frontier_report_from_records, render_frontier_markdo
 from .observer_report import render_html_report, render_report
 from .replay import iter_jsonl
 from .season import load_season_manifest
+from .season_catalog import load_optional_compiled_season, resolve_season_path
 
 
 WORLD_SUMMARY = """# World Summary
@@ -133,6 +134,23 @@ def _write_json(path: Path, payload: Any) -> None:
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
+def _season_manifest_payload(compiled_season: Any) -> dict[str, Any]:
+    if compiled_season is None:
+        return load_season_manifest()
+    spec = compiled_season.spec
+    return {
+        "schema_version": spec.schema_version,
+        "season_id": spec.season_id,
+        "title": spec.title,
+        "board_size": spec.width,
+        "symbols": list(spec.symbol_ids),
+        "relations": list(spec.relations),
+        "claim_kinds": list(spec.conjecture_dsl.claim_kinds),
+        "condition_kinds": list(spec.conjecture_dsl.condition_kinds),
+        "judge": "deterministic_season_spec_engine",
+    }
+
+
 def build_match_pack(
     transcript_path: str | Path,
     out_dir: str | Path,
@@ -140,6 +158,7 @@ def build_match_pack(
     min_player_interval_seconds: int = 0,
     season_scoring: bool = True,
     reveal_policy: str = "redacted",
+    season_path: str | Path | None = None,
 ) -> dict[str, str]:
     transcript_path = Path(transcript_path)
     out_dir = Path(out_dir)
@@ -147,9 +166,15 @@ def build_match_pack(
     out_dir.mkdir(parents=True, exist_ok=True)
     templates_dir = out_dir / "templates"
     templates_dir.mkdir(exist_ok=True)
+    compiled_season = load_optional_compiled_season(season_path)
+    resolved_season_path = resolve_season_path(season_path)
 
     transcript_out = out_dir / "transcript.jsonl"
     shutil.copyfile(transcript_path, transcript_out)
+    season_spec_name = None
+    if resolved_season_path is not None and resolved_season_path.exists():
+        season_spec_name = "season_spec.json"
+        shutil.copyfile(resolved_season_path, out_dir / season_spec_name)
 
     repo_root = _repo_root()
     for filename in [
@@ -159,6 +184,9 @@ def build_match_pack(
         "SECURITY.md",
         "SEASON0_RULES.md",
         "SEASON0_OPERATOR_RUNBOOK.md",
+        "SEASON_SPEC_SCHEMA.md",
+        "SEASON_DESIGNER_GUIDE.md",
+        "SEASON_REVIEWER_GUIDE.md",
         "season_manifest.json",
     ]:
         source = repo_root / filename
@@ -177,12 +205,14 @@ def build_match_pack(
         min_player_interval_seconds=min_player_interval_seconds,
         season_scoring=season_scoring,
         reveal_policy=reveal_policy,
+        season=compiled_season,
     )
     observer_html = render_html_report(
         records,
         min_player_interval_seconds=min_player_interval_seconds,
         season_scoring=season_scoring,
         reveal_policy=reveal_policy,
+        season=compiled_season,
     )
     (out_dir / "observer_report.md").write_text(observer_md, encoding="utf-8")
     (out_dir / "observer_report.html").write_text(observer_html, encoding="utf-8")
@@ -191,15 +221,22 @@ def build_match_pack(
         records,
         min_player_interval_seconds=min_player_interval_seconds,
         season_scoring=season_scoring,
+        season=compiled_season,
     )
-    (out_dir / "frontier.md").write_text(render_frontier_markdown(frontier), encoding="utf-8")
+    (out_dir / "frontier.md").write_text(
+        render_frontier_markdown(frontier, display_season_id=compiled_season.spec.season_id if compiled_season else None),
+        encoding="utf-8",
+    )
     _write_json(out_dir / "frontier.json", frontier.to_dict())
 
     files = sorted(str(path.relative_to(out_dir)) for path in out_dir.rglob("*") if path.is_file())
     if "manifest.json" not in files:
         files.append("manifest.json")
+    season_manifest_payload = _season_manifest_payload(compiled_season)
     manifest = {
-        "season": load_season_manifest(),
+        "season": season_manifest_payload,
+        "season_id": season_manifest_payload["season_id"],
+        "season_spec": season_spec_name,
         "transcript": "transcript.jsonl",
         "season_scoring": season_scoring,
         "min_player_interval_seconds": min_player_interval_seconds,
@@ -226,6 +263,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--no-season-scoring", action="store_true", help="Render reports without season scoring.")
     parser.add_argument("--reveal-policy", choices=["full", "redacted"], default="redacted")
+    parser.add_argument("--season", help="Optional data-only season spec path")
     args = parser.parse_args(argv)
     build_match_pack(
         args.transcript,
@@ -233,6 +271,7 @@ def main(argv: list[str] | None = None) -> int:
         min_player_interval_seconds=args.min_player_interval_seconds,
         season_scoring=not args.no_season_scoring,
         reveal_policy=args.reveal_policy,
+        season_path=args.season,
     )
     print(f"Wrote match pack to {args.out}")
     return 0

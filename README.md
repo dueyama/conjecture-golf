@@ -149,6 +149,30 @@ python -m conjecture_golf.season_eval examples/transcripts/season0_match.jsonl
 The generated match pack includes `AI_ONE_PAGE_QUICKSTART.md`, transcript,
 frontier report, observer report, templates, and the Season 0 manifest.
 
+## Season Spec workflow
+
+Future seasons can be proposed as safe data-only JSON specs. Designer agents
+write constrained JSON, not Python verifier code. See
+[SEASON_SPEC_SCHEMA.md](SEASON_SPEC_SCHEMA.md),
+[SEASON_DESIGNER_GUIDE.md](SEASON_DESIGNER_GUIDE.md), and
+[SEASON_REVIEWER_GUIDE.md](SEASON_REVIEWER_GUIDE.md).
+
+```bash
+python -m conjecture_golf.season_spec lint seasons/season_0.json
+python -m conjecture_golf.season_spec metrics seasons/season_0.json --json
+python -m conjecture_golf.season_spec render seasons/season_0.json
+python -m conjecture_golf.season_spec smoke seasons/season_0.json
+```
+
+Most local commands accept `--season` for spec-backed play:
+
+```bash
+python -m conjecture_golf.verify examples/conjectures/growth_true.json --season seasons/season_0.json --pretty
+python -m conjecture_golf.replay examples/transcripts/basic.jsonl --season seasons/season_0.json --season-scoring
+python -m conjecture_golf.frontier examples/transcripts/basic.jsonl --season seasons/season_0.json
+python -m conjecture_golf.match_pack examples/transcripts/basic.jsonl --season seasons/season_0.json --out /tmp/conjecture-golf-pack
+```
+
 ## Run the demo
 
 ```bash

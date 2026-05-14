@@ -11,6 +11,8 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from .dsl import antecedent_matches, complexity, player_name_from_submission, validate_conjecture
+from .season_catalog import load_optional_compiled_season
+from .season_engine import CompiledSeason
 from .world import BOARD_SIZE, Board, ValidationError, canonical_test_boards, evolve, format_board, related_coords, tiny_local_boards, validate_board
 
 
@@ -129,13 +131,124 @@ def _evolve_cell_fast(board: Sequence[str], row: int, col: int) -> str:
     return target
 
 
-def verify_conjecture(conjecture: Mapping[str, Any], *, exhaustive_local: bool = True) -> Verdict:
+def _verify_conjecture_with_season(
+    conjecture: Mapping[str, Any],
+    *,
+    season: CompiledSeason,
+    exhaustive_local: bool,
+) -> Verdict:
+    try:
+        normalized = season.validate_conjecture(conjecture)
+        player = player_name_from_submission(normalized)
+        obligations_checked = 0
+        counterexamples: list[dict[str, Any]] = []
+        expected = normalized["then"]["target_becomes"]
+        claim_kind = normalized.get("claim_kind", "sufficient")
+
+        if exhaustive_local:
+            board_iter = (season.center_embed_3x3(local) for local in season.tiny_local_boards(size=3))
+            cell_iter = lambda board: [(2, 2)]
+        else:
+            boards = [board for board in canonical_test_boards() if set("".join(board)) <= season.symbol_set]
+            board_iter = iter(boards)
+            cell_iter = lambda board: [(row, col) for row in range(len(board)) for col in range(len(board[row]))]
+
+        for board in board_iter:
+            for row, col in cell_iter(board):
+                antecedent = season.evaluate_conditions(board, row, col, normalized["if"])
+                actual = season.next_symbol_for_cell(board, row, col)
+                target_produced = actual == expected
+                if claim_kind in {"sufficient", "equivalence"} and antecedent:
+                    obligations_checked += 1
+                if claim_kind == "necessary" and target_produced:
+                    obligations_checked += 1
+                if (
+                    (claim_kind in {"sufficient", "equivalence"} and antecedent and not target_produced)
+                    or (claim_kind in {"necessary", "equivalence"} and target_produced and not antecedent)
+                ):
+                    counterexamples.append(
+                        {
+                            "board": board,
+                            "after": season.step_board(board),
+                            "cell": [row, col],
+                            "expected": expected,
+                            "actual": actual,
+                            "claim_kind": claim_kind,
+                            "antecedent": antecedent,
+                        }
+                    )
+                    break
+            if counterexamples:
+                break
+
+        comp = season.conjecture_complexity(normalized)
+        if counterexamples:
+            return Verdict(
+                ok=False,
+                kind="conjecture",
+                player=player,
+                message=f"Conjecture {normalized['name']!r} is false; a counterexample was found.",
+                score_delta=-5,
+                details={
+                    "name": normalized["name"],
+                    "claim_kind": claim_kind,
+                    "complexity": comp,
+                    "obligations_checked_before_failure": obligations_checked,
+                    "counterexample": counterexamples[0],
+                    "season_id": season.spec.season_id,
+                },
+            )
+
+        if obligations_checked == 0:
+            return Verdict(
+                ok=False,
+                kind="conjecture",
+                player=player,
+                message=f"Conjecture {normalized['name']!r} is vacuous on the exhaustive local check.",
+                score_delta=-5,
+                details={"name": normalized["name"], "claim_kind": claim_kind, "complexity": comp, "coverage": 0, "season_id": season.spec.season_id},
+            )
+
+        coverage_bonus = min(40, obligations_checked // 512)
+        if claim_kind == "necessary":
+            coverage_bonus = min(40, obligations_checked // 1024)
+        elif claim_kind == "equivalence":
+            coverage_bonus = min(60, obligations_checked // 512)
+        score_delta = max(1, 10 + coverage_bonus - comp)
+        return Verdict(
+            ok=True,
+            kind="conjecture",
+            player=player,
+            message=f"Conjecture {normalized['name']!r} holds on the exhaustive local check.",
+            score_delta=score_delta,
+            details={
+                "name": normalized["name"],
+                "claim_kind": claim_kind,
+                "complexity": comp,
+                "coverage": obligations_checked,
+                "coverage_bonus": coverage_bonus,
+                "season_id": season.spec.season_id,
+            },
+        )
+    except ValidationError as exc:
+        return Verdict(ok=False, kind="conjecture", message=str(exc), score_delta=-5)
+
+
+def verify_conjecture(
+    conjecture: Mapping[str, Any],
+    *,
+    exhaustive_local: bool = True,
+    season: CompiledSeason | None = None,
+) -> Verdict:
     """Verify whether a conjecture is true for the public world rule.
 
     The MVP checks all possible 3x3 neighborhoods around the center cell by
     embedding them into a 5x5 board. Because the public evolution rule is local,
     this is a meaningful and deterministic check for the center cell.
     """
+
+    if season is not None:
+        return _verify_conjecture_with_season(conjecture, season=season, exhaustive_local=exhaustive_local)
 
     try:
         normalized = validate_conjecture(conjecture)
@@ -270,7 +383,85 @@ def local_obligation_keys(conjecture: Mapping[str, Any]) -> set[str]:
     return set(obligation_ids_for_conjecture(conjecture))
 
 
-def check_counterexample(conjecture: Mapping[str, Any], before: Sequence[str]) -> Verdict:
+def _check_counterexample_with_season(conjecture: Mapping[str, Any], before: Sequence[str], *, season: CompiledSeason) -> Verdict:
+    try:
+        normalized = season.validate_conjecture(conjecture)
+        board = season.validate_board(list(before))
+        expected = normalized["then"]["target_becomes"]
+        claim_kind = normalized.get("claim_kind", "sufficient")
+        obligations: list[dict[str, Any]] = []
+        failures: list[dict[str, Any]] = []
+        for row in range(season.spec.height):
+            for col in range(season.spec.width):
+                antecedent = season.evaluate_conditions(board, row, col, normalized["if"])
+                actual = season.next_symbol_for_cell(board, row, col)
+                target_produced = actual == expected
+                if claim_kind in {"sufficient", "equivalence"} and antecedent:
+                    item = {
+                        "row": row,
+                        "col": col,
+                        "expected": expected,
+                        "actual": actual,
+                        "holds": target_produced,
+                        "claim_kind": claim_kind,
+                        "antecedent": antecedent,
+                    }
+                    obligations.append(item)
+                    if not item["holds"]:
+                        failures.append(item)
+                if claim_kind in {"necessary", "equivalence"} and target_produced:
+                    item = {
+                        "row": row,
+                        "col": col,
+                        "expected": expected,
+                        "actual": actual,
+                        "holds": antecedent,
+                        "claim_kind": claim_kind,
+                        "antecedent": antecedent,
+                    }
+                    obligations.append(item)
+                    if not item["holds"]:
+                        failures.append(item)
+        player = player_name_from_submission(normalized)
+        if not failures:
+            return Verdict(
+                ok=False,
+                kind="counterexample",
+                player=player,
+                message="The board is not a counterexample; every triggered obligation holds.",
+                score_delta=-5,
+                details={"obligations": len(obligations), "before": board, "after": season.step_board(board), "season_id": season.spec.season_id},
+            )
+        first = failures[0]
+        occupied = sum(ch != "." for row in board for ch in row)
+        minimality_bonus = max(0, 15 - occupied)
+        return Verdict(
+            ok=True,
+            kind="counterexample",
+            player=player,
+            message=f"Valid counterexample against {normalized['name']!r} at cell ({first['row']}, {first['col']}).",
+            score_delta=20 + minimality_bonus,
+            details={
+                "name": normalized["name"],
+                "before": board,
+                "after": season.step_board(board),
+                "cell": [first["row"], first["col"]],
+                "expected": first["expected"],
+                "actual": first["actual"],
+                "minimality_bonus": minimality_bonus,
+                "season_id": season.spec.season_id,
+            },
+        )
+    except ValidationError as exc:
+        return Verdict(ok=False, kind="counterexample", message=str(exc), score_delta=-5)
+
+
+def check_counterexample(
+    conjecture: Mapping[str, Any],
+    before: Sequence[str],
+    *,
+    season: CompiledSeason | None = None,
+) -> Verdict:
     """Check whether a board is a valid counterexample to a conjecture.
 
     The supplied board is the before-state. The verifier computes the after-state
@@ -278,6 +469,9 @@ def check_counterexample(conjecture: Mapping[str, Any], before: Sequence[str]) -
     satisfies the conjecture's antecedent but evolves to a symbol different from
     the conjecture's consequent.
     """
+
+    if season is not None:
+        return _check_counterexample_with_season(conjecture, before, season=season)
 
     try:
         normalized = validate_conjecture(conjecture)
@@ -356,7 +550,7 @@ def load_json(path: str | Path) -> Any:
         return json.load(f)
 
 
-def verify_file(path: str | Path) -> Verdict:
+def verify_file(path: str | Path, *, season: CompiledSeason | None = None) -> Verdict:
     payload = load_json(path)
     if not isinstance(payload, dict):
         return Verdict(ok=False, kind="file", message="top-level JSON must be an object", score_delta=-5)
@@ -365,10 +559,10 @@ def verify_file(path: str | Path) -> Verdict:
         before = payload.get("before") or payload.get("board")
         if conjecture is None or before is None:
             return Verdict(ok=False, kind="counterexample", message="counterexample file needs conjecture and before/board", score_delta=-5)
-        return check_counterexample(conjecture, before)
+        return check_counterexample(conjecture, before, season=season)
     if payload.get("type") == "conjecture":
         payload = {k: v for k, v in payload.items() if k != "type"}
-    return verify_conjecture(payload)
+    return verify_conjecture(payload, season=season)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -376,8 +570,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("path", help="Path to a conjecture or counterexample JSON file")
     parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON verdict")
     parser.add_argument("--reveal-policy", choices=["full", "redacted"], default="full")
+    parser.add_argument("--season", help="Optional data-only season spec path")
     args = parser.parse_args(argv)
-    verdict = verify_file(args.path)
+    season = load_optional_compiled_season(args.season)
+    verdict = verify_file(args.path, season=season)
     verdict = redact_verdict(verdict, reveal_policy=args.reveal_policy)
     indent = 2 if args.pretty else None
     print(json.dumps(verdict.to_dict(), ensure_ascii=False, indent=indent))

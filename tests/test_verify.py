@@ -1,4 +1,5 @@
 from conjecture_golf.verify import check_counterexample, redact_verdict, verify_conjecture
+from conjecture_golf.season_engine import load_compiled_season
 
 TRUE_CONJECTURE = {
     "player": "blue",
@@ -46,6 +47,15 @@ def test_true_conjecture_holds_exhaustive_local():
     assert verdict.details["coverage"] > 0
 
 
+def test_true_conjecture_holds_with_season_spec():
+    season = load_compiled_season("seasons/season_0.json")
+    verdict = verify_conjecture(TRUE_CONJECTURE, season=season)
+
+    assert verdict.ok
+    assert verdict.details["season_id"] == "season_0"
+    assert verdict.details["coverage"] == 4225
+
+
 def test_false_conjecture_is_refuted():
     verdict = verify_conjecture(FALSE_CONJECTURE)
     assert not verdict.ok
@@ -67,6 +77,15 @@ def test_counterexample_valid_against_false_conjecture():
     verdict = check_counterexample(FALSE_CONJECTURE, board)
     assert verdict.ok
     assert verdict.details["actual"] == "."
+
+
+def test_counterexample_valid_with_season_spec():
+    season = load_compiled_season("seasons/season_0.json")
+    board = [".W...", ".....", ".SF..", ".....", "....."]
+    verdict = check_counterexample(FALSE_CONJECTURE, board, season=season)
+
+    assert verdict.ok
+    assert verdict.details["season_id"] == "season_0"
 
 
 def test_counterexample_invalid_against_true_conjecture():

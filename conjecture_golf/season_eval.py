@@ -11,11 +11,14 @@ from typing import Any
 from .frontier import build_frontier_report
 from .replay import iter_jsonl, replay_records
 from .score import leaderboard_rows
+from .season_catalog import load_optional_compiled_season
+from .season_engine import CompiledSeason
 from .season import season_id
 
 
 @dataclass(frozen=True)
 class SeasonEvaluation:
+    season_id: str
     total_moves: int
     valid_conjectures: int
     valid_counterexamples: int
@@ -33,7 +36,7 @@ class SeasonEvaluation:
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "season_id": season_id(),
+            "season_id": self.season_id,
             "total_moves": self.total_moves,
             "valid_conjectures": self.valid_conjectures,
             "valid_counterexamples": self.valid_counterexamples,
@@ -107,11 +110,13 @@ def evaluate_records(
     *,
     min_player_interval_seconds: int = 0,
     season_scoring: bool = True,
+    season: CompiledSeason | None = None,
 ) -> SeasonEvaluation:
     state = replay_records(
         records,
         min_player_interval_seconds=min_player_interval_seconds,
         season_scoring=season_scoring,
+        season=season,
     )
     verdicts = state.verdicts
     rows = leaderboard_rows(state.scores)
@@ -121,10 +126,11 @@ def evaluate_records(
     ]
     accepted_counterexamples = [v for v in verdicts if v.kind == "counterexample" and v.ok]
     score_values = [int(row["total"]) for row in rows]
-    frontier = build_frontier_report(state)
+    frontier = build_frontier_report(state, season=season)
     styles = _strategic_styles(verdicts)
 
     return SeasonEvaluation(
+        season_id=season.spec.season_id if season else season_id(),
         total_moves=len(verdicts),
         valid_conjectures=len(accepted_laws),
         valid_counterexamples=len(accepted_counterexamples),
@@ -239,11 +245,14 @@ def main(argv: list[str] | None = None) -> int:
         help="Apply the same cooldown rule used by replay.",
     )
     parser.add_argument("--no-season-scoring", action="store_true", help="Evaluate without season scoring.")
+    parser.add_argument("--season", help="Optional data-only season spec path")
     args = parser.parse_args(argv)
+    season = load_optional_compiled_season(args.season)
     evaluation = evaluate_records(
         iter_jsonl(args.path),
         min_player_interval_seconds=args.min_player_interval_seconds,
         season_scoring=not args.no_season_scoring,
+        season=season,
     )
     if args.json:
         print(json.dumps(evaluation.to_dict(), ensure_ascii=False, indent=2, sort_keys=True))

@@ -12,6 +12,7 @@ from functools import lru_cache
 from typing import Any
 
 from .dsl import validate_conjecture
+from .season_engine import CompiledSeason
 from .world import BOARD_SIZE, Board, ValidationError, related_coords, tiny_local_boards
 
 WORLD_VERSION = "season_0"
@@ -125,8 +126,8 @@ def parse_obligation_id(identifier: str) -> dict[str, Any]:
         raise ValidationError("obligation ID has unknown claim kind")
     before = parsed.get("before")
     after = parsed.get("after")
-    if before not in {".", "F", "W", "S"} or after not in {".", "F", "W", "S"}:
-        raise ValidationError("obligation ID has unknown symbol")
+    if not isinstance(before, str) or len(before) != 1 or not isinstance(after, str) or len(after) != 1:
+        raise ValidationError("obligation ID has invalid symbol")
     try:
         parsed["local_index"] = int(str(parsed["local"]))
     except (KeyError, ValueError) as exc:
@@ -145,6 +146,25 @@ def all_local_obligation_ids(*, world_version: str = WORLD_VERSION) -> frozenset
             obligations.add(
                 obligation_id(
                     world_version=world_version,
+                    center_before_symbol=before,
+                    center_after_symbol=actual,
+                    local_neighborhood_index=index,
+                    claim_kind=claim_kind,
+                )
+            )
+    return frozenset(obligations)
+
+
+def all_local_obligation_ids_for_season(season: CompiledSeason) -> frozenset[str]:
+    obligations: set[str] = set()
+    for index, local in enumerate(season.tiny_local_boards(size=3)):
+        board = season.center_embed_3x3(local)
+        actual = season.next_symbol_for_cell(board, 2, 2)
+        before = board[2][2]
+        for claim_kind in CLAIM_KINDS:
+            obligations.add(
+                obligation_id(
+                    world_version=season.spec.season_id,
                     center_before_symbol=before,
                     center_after_symbol=actual,
                     local_neighborhood_index=index,
@@ -180,7 +200,10 @@ def obligation_ids_for_conjecture(
     conjecture: Mapping[str, Any],
     *,
     world_version: str = WORLD_VERSION,
+    season: CompiledSeason | None = None,
 ) -> frozenset[str]:
+    if season is not None:
+        return obligation_ids_for_conjecture_in_season(conjecture, season=season)
     normalized = validate_conjecture(conjecture)
     claim_kind = str(normalized.get("claim_kind", CLAIM_KIND_SUFFICIENT))
     expected = normalized["then"]["target_becomes"]
@@ -204,6 +227,43 @@ def obligation_ids_for_conjecture(
             obligations.add(
                 obligation_id(
                     world_version=world_version,
+                    center_before_symbol=board[2][2],
+                    center_after_symbol=expected,
+                    local_neighborhood_index=index,
+                    claim_kind=CLAIM_KIND_NECESSARY,
+                )
+            )
+    return frozenset(obligations)
+
+
+def obligation_ids_for_conjecture_in_season(
+    conjecture: Mapping[str, Any],
+    *,
+    season: CompiledSeason,
+) -> frozenset[str]:
+    normalized = season.validate_conjecture(conjecture)
+    claim_kind = str(normalized.get("claim_kind", CLAIM_KIND_SUFFICIENT))
+    expected = normalized["then"]["target_becomes"]
+    obligations: set[str] = set()
+    for index, local in enumerate(season.tiny_local_boards(size=3)):
+        board = season.center_embed_3x3(local)
+        antecedent = season.evaluate_conditions(board, 2, 2, normalized["if"])
+        actual = season.next_symbol_for_cell(board, 2, 2)
+        target_produced = actual == expected
+        if claim_kind in {"sufficient", "equivalence"} and antecedent:
+            obligations.add(
+                obligation_id(
+                    world_version=season.spec.season_id,
+                    center_before_symbol=board[2][2],
+                    center_after_symbol=expected,
+                    local_neighborhood_index=index,
+                    claim_kind=CLAIM_KIND_SUFFICIENT,
+                )
+            )
+        if claim_kind in {"necessary", "equivalence"} and target_produced:
+            obligations.add(
+                obligation_id(
+                    world_version=season.spec.season_id,
                     center_before_symbol=board[2][2],
                     center_after_symbol=expected,
                     local_neighborhood_index=index,
