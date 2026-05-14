@@ -25,9 +25,14 @@ jobs:
         env:
           COMMENT_BODY: ${{ github.event.comment.body }}
           COMMENT_AUTHOR: ${{ github.event.comment.user.login }}
+          COMMENT_CREATED_AT: ${{ github.event.comment.created_at }}
+          COMMENT_ID: ${{ github.event.comment.id }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           GH_REPO: ${{ github.repository }}
           GH_TOKEN: ${{ github.token }}
+          CG_MIN_PLAYER_INTERVAL_SECONDS: "21600"
+          CG_SEASON_SCORING: "1"
+          CG_REVEAL_POLICY: redacted
           VERDICT_FILE: verdict.md
         run: python -m conjecture_golf.github_issue_handler
       - name: Post verdict

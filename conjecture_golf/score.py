@@ -12,6 +12,10 @@ from .verify import Verdict
 class PlayerScore:
     player: str
     total: int = 0
+    law_score: int = 0
+    counterexample_score: int = 0
+    invalid_penalty: int = 0
+    other_score: int = 0
     valid_conjectures: int = 0
     valid_counterexamples: int = 0
     invalid_moves: int = 0
@@ -31,14 +35,19 @@ def apply_verdict(scores: dict[str, PlayerScore], verdict: Verdict) -> None:
     ps = scores[player]
     ps.total += verdict.score_delta
     if verdict.ok and verdict.kind == "conjecture":
+        ps.law_score += verdict.score_delta
         ps.valid_conjectures += 1
         details = verdict.details or {}
         if "complexity" in details:
             ps.conjecture_complexities.append(int(details["complexity"]))
     elif verdict.ok and verdict.kind == "counterexample":
+        ps.counterexample_score += verdict.score_delta
         ps.valid_counterexamples += 1
     elif not verdict.ok:
+        ps.invalid_penalty += verdict.score_delta
         ps.invalid_moves += 1
+    else:
+        ps.other_score += verdict.score_delta
 
 
 def leaderboard_rows(scores: dict[str, PlayerScore]) -> list[dict[str, Any]]:
@@ -48,6 +57,10 @@ def leaderboard_rows(scores: dict[str, PlayerScore]) -> list[dict[str, Any]]:
             {
                 "player": player,
                 "total": ps.total,
+                "law_score": ps.law_score,
+                "counterexample_score": ps.counterexample_score,
+                "invalid_penalty": ps.invalid_penalty,
+                "other_score": ps.other_score,
                 "valid_conjectures": ps.valid_conjectures,
                 "valid_counterexamples": ps.valid_counterexamples,
                 "invalid_moves": ps.invalid_moves,
@@ -59,12 +72,14 @@ def leaderboard_rows(scores: dict[str, PlayerScore]) -> list[dict[str, Any]]:
 
 def render_markdown(rows: Iterable[dict[str, Any]]) -> str:
     lines = [
-        "| rank | player | score | conjectures | counterexamples | invalid | avg complexity |",
-        "|---:|---|---:|---:|---:|---:|---:|",
+        "| rank | player | total | laws | counterexamples | invalid penalty | conjectures | refutations | invalid | avg complexity |",
+        "|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for idx, row in enumerate(rows, start=1):
         lines.append(
-            f"| {idx} | {row['player']} | {row['total']} | {row['valid_conjectures']} | "
-            f"{row['valid_counterexamples']} | {row['invalid_moves']} | {row['avg_complexity']} |"
+            f"| {idx} | {row['player']} | {row['total']} | {row['law_score']} | "
+            f"{row['counterexample_score']} | {row['invalid_penalty']} | "
+            f"{row['valid_conjectures']} | {row['valid_counterexamples']} | "
+            f"{row['invalid_moves']} | {row['avg_complexity']} |"
         )
     return "\n".join(lines)

@@ -1,0 +1,10 @@
+{
+  "type": "conjecture",
+  "player": "characterizer-agent",
+  "name": "stone_stays_stone_exactly",
+  "claim_kind": "equivalence",
+  "if": [
+    {"target_is": "S"}
+  ],
+  "then": {"target_becomes": "S"}
+}

@@ -16,7 +16,20 @@ TRUE_CONJECTURE = {
 
 
 def test_validate_conjecture_normalizes():
-    assert validate_conjecture(TRUE_CONJECTURE)["name"] == "growth"
+    normalized = validate_conjecture(TRUE_CONJECTURE)
+    assert normalized["name"] == "growth"
+    assert normalized["claim_kind"] == "sufficient"
+
+
+def test_validate_conjecture_accepts_claim_kind():
+    conjecture = {**TRUE_CONJECTURE, "claim_kind": "equivalence"}
+    assert validate_conjecture(conjecture)["claim_kind"] == "equivalence"
+
+
+def test_validate_conjecture_rejects_bad_claim_kind():
+    conjecture = {**TRUE_CONJECTURE, "claim_kind": "maybe"}
+    with pytest.raises(ValidationError):
+        validate_conjecture(conjecture)
 
 
 def test_validate_conjecture_rejects_unknown_field():

@@ -10,7 +10,8 @@ from .world import RELATIONS, SYMBOLS, Board, ValidationError, count_relation, e
 ALLOWED_CONDITION_KEYS = {"target_is", "exists", "not_exists", "count_at_least", "count_exactly"}
 ALLOWED_THEN_KEYS = {"target_becomes"}
 REQUIRED_CONJECTURE_KEYS = {"name", "if", "then"}
-ALLOWED_CONJECTURE_KEYS = REQUIRED_CONJECTURE_KEYS | {"player", "description", "tags"}
+CLAIM_KINDS = {"sufficient", "necessary", "equivalence"}
+ALLOWED_CONJECTURE_KEYS = REQUIRED_CONJECTURE_KEYS | {"player", "description", "tags", "claim_kind"}
 
 
 Conjecture = dict[str, Any]
@@ -47,6 +48,14 @@ def _validate_name(name: Any) -> str:
     if any(ch not in allowed for ch in cleaned):
         raise ValidationError("conjecture name may contain only letters, digits, '_', '-', and '.'")
     return cleaned
+
+
+def _validate_claim_kind(claim_kind: Any) -> str:
+    if claim_kind is None:
+        return "sufficient"
+    if not isinstance(claim_kind, str) or claim_kind not in CLAIM_KINDS:
+        raise ValidationError(f"claim_kind must be one of {sorted(CLAIM_KINDS)}")
+    return claim_kind
 
 
 def validate_condition(condition: Any) -> Condition:
@@ -113,7 +122,12 @@ def validate_conjecture(conjecture: Any) -> Conjecture:
         raise ValidationError("then must contain exactly target_becomes")
     then = {"target_becomes": _validate_symbol(then["target_becomes"], "target_becomes")}
 
-    normalized: Conjecture = {"name": name, "if": conditions, "then": then}
+    normalized: Conjecture = {
+        "name": name,
+        "claim_kind": _validate_claim_kind(conjecture.get("claim_kind")),
+        "if": conditions,
+        "then": then,
+    }
     if "player" in conjecture:
         if not isinstance(conjecture["player"], str) or len(conjecture["player"].strip()) > 80:
             raise ValidationError("player must be a short string")
@@ -174,17 +188,34 @@ def evaluate_on_board(conjecture: Mapping[str, Any], board: Sequence[str]) -> li
     conjecture = validate_conjecture(conjecture)
     obligations: list[dict[str, Any]] = []
     expected = predicted_symbol(conjecture)
+    claim_kind = conjecture.get("claim_kind", "sufficient")
     for row in range(len(board)):
         for col in range(len(board)):
-            if antecedent_matches(conjecture, board, row, col):
-                actual = evolve_cell(board, row, col)
+            antecedent = antecedent_matches(conjecture, board, row, col)
+            actual = evolve_cell(board, row, col)
+            target_produced = actual == expected
+            if claim_kind in {"sufficient", "equivalence"} and antecedent:
                 obligations.append(
                     {
                         "row": row,
                         "col": col,
                         "expected": expected,
                         "actual": actual,
-                        "holds": actual == expected,
+                        "holds": target_produced,
+                        "claim_kind": claim_kind,
+                        "antecedent": antecedent,
+                    }
+                )
+            if claim_kind in {"necessary", "equivalence"} and target_produced:
+                obligations.append(
+                    {
+                        "row": row,
+                        "col": col,
+                        "expected": expected,
+                        "actual": actual,
+                        "holds": antecedent,
+                        "claim_kind": claim_kind,
+                        "antecedent": antecedent,
                     }
                 )
     return obligations
@@ -202,6 +233,11 @@ def complexity(conjecture: Mapping[str, Any]) -> int:
             cost += 1
         if kind in {"count_at_least", "count_exactly"}:
             cost += 1
+    claim_kind = conjecture.get("claim_kind", "sufficient")
+    if claim_kind == "necessary":
+        cost += 1
+    elif claim_kind == "equivalence":
+        cost += 2
     return cost + 1  # then-clause cost
 
 

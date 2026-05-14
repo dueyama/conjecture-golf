@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, replace
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
-from .dsl import complexity, evaluate_on_board, player_name_from_submission, validate_conjecture
+from .dsl import antecedent_matches, complexity, player_name_from_submission, validate_conjecture
 from .world import BOARD_SIZE, Board, ValidationError, canonical_test_boards, evolve, format_board, related_coords, tiny_local_boards, validate_board
 
 
@@ -24,6 +25,39 @@ class Verdict:
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
+
+
+def _digest_payload(payload: Any) -> str:
+    encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def redact_verdict(verdict: Verdict, *, reveal_policy: str = "full") -> Verdict:
+    if reveal_policy == "full":
+        return verdict
+    if reveal_policy != "redacted":
+        raise ValidationError("reveal_policy must be full or redacted")
+
+    details = verdict.details
+    if verdict.kind != "conjecture" or verdict.ok or not isinstance(details, dict):
+        return verdict
+    counterexample = details.get("counterexample")
+    if not isinstance(counterexample, dict):
+        return verdict
+
+    redacted = dict(details)
+    redacted["counterexample_redacted"] = True
+    redacted["counterexample_digest"] = _digest_payload(counterexample)
+    redacted["counterexample_summary"] = {
+        "expected": counterexample.get("expected"),
+        "actual": counterexample.get("actual"),
+    }
+    redacted.pop("counterexample", None)
+    return replace(
+        verdict,
+        message=f"{verdict.message} Counterexample witness redacted by reveal policy.",
+        details=redacted,
+    )
 
 
 def _center_embed_3x3(local: Sequence[str]) -> Board:
@@ -110,17 +144,24 @@ def verify_conjecture(conjecture: Mapping[str, Any], *, exhaustive_local: bool =
         counterexamples: list[dict[str, Any]] = []
 
         expected = normalized["then"]["target_becomes"]
+        claim_kind = normalized.get("claim_kind", "sufficient")
         if exhaustive_local:
             # Check the center cell for every possible 3x3 local neighborhood.
             # This is fast enough and avoids full-board repeated validation.
             for local in tiny_local_boards(size=3):
                 board = _center_embed_3x3(local)
                 row, col = 2, 2
-                if not _antecedent_matches_fast(normalized, board, row, col):
-                    continue
-                obligations_checked += 1
+                antecedent = _antecedent_matches_fast(normalized, board, row, col)
                 actual = _evolve_cell_fast(board, row, col)
-                if actual != expected:
+                target_produced = actual == expected
+                if claim_kind in {"sufficient", "equivalence"} and antecedent:
+                    obligations_checked += 1
+                if claim_kind == "necessary" and target_produced:
+                    obligations_checked += 1
+                if (
+                    (claim_kind in {"sufficient", "equivalence"} and antecedent and not target_produced)
+                    or (claim_kind in {"necessary", "equivalence"} and target_produced and not antecedent)
+                ):
                     counterexamples.append(
                         {
                             "board": board,
@@ -128,6 +169,8 @@ def verify_conjecture(conjecture: Mapping[str, Any], *, exhaustive_local: bool =
                             "cell": [row, col],
                             "expected": expected,
                             "actual": actual,
+                            "claim_kind": claim_kind,
+                            "antecedent": antecedent,
                         }
                     )
                     break
@@ -135,11 +178,17 @@ def verify_conjecture(conjecture: Mapping[str, Any], *, exhaustive_local: bool =
             for board in canonical_test_boards():
                 for row in range(BOARD_SIZE):
                     for col in range(BOARD_SIZE):
-                        if not _antecedent_matches_fast(normalized, board, row, col):
-                            continue
-                        obligations_checked += 1
+                        antecedent = _antecedent_matches_fast(normalized, board, row, col)
                         actual = _evolve_cell_fast(board, row, col)
-                        if actual != expected:
+                        target_produced = actual == expected
+                        if claim_kind in {"sufficient", "equivalence"} and antecedent:
+                            obligations_checked += 1
+                        if claim_kind == "necessary" and target_produced:
+                            obligations_checked += 1
+                        if (
+                            (claim_kind in {"sufficient", "equivalence"} and antecedent and not target_produced)
+                            or (claim_kind in {"necessary", "equivalence"} and target_produced and not antecedent)
+                        ):
                             counterexamples.append(
                                 {
                                     "board": board,
@@ -147,6 +196,8 @@ def verify_conjecture(conjecture: Mapping[str, Any], *, exhaustive_local: bool =
                                     "cell": [row, col],
                                     "expected": expected,
                                     "actual": actual,
+                                    "claim_kind": claim_kind,
+                                    "antecedent": antecedent,
                                 }
                             )
                             break
@@ -165,6 +216,7 @@ def verify_conjecture(conjecture: Mapping[str, Any], *, exhaustive_local: bool =
                 score_delta=-5,
                 details={
                     "name": normalized["name"],
+                    "claim_kind": claim_kind,
                     "complexity": comp,
                     "obligations_checked_before_failure": obligations_checked,
                     "counterexample": counterexamples[0],
@@ -179,10 +231,14 @@ def verify_conjecture(conjecture: Mapping[str, Any], *, exhaustive_local: bool =
                 player=player,
                 message=f"Conjecture {normalized['name']!r} is vacuous on the exhaustive local check.",
                 score_delta=-5,
-                details={"name": normalized["name"], "complexity": comp, "coverage": 0},
+                details={"name": normalized["name"], "claim_kind": claim_kind, "complexity": comp, "coverage": 0},
             )
 
         coverage_bonus = min(40, obligations_checked // 512)
+        if claim_kind == "necessary":
+            coverage_bonus = min(40, obligations_checked // 1024)
+        elif claim_kind == "equivalence":
+            coverage_bonus = min(60, obligations_checked // 512)
         score_delta = max(1, 10 + coverage_bonus - comp)
         return Verdict(
             ok=True,
@@ -192,6 +248,7 @@ def verify_conjecture(conjecture: Mapping[str, Any], *, exhaustive_local: bool =
             score_delta=score_delta,
             details={
                 "name": normalized["name"],
+                "claim_kind": claim_kind,
                 "complexity": comp,
                 "coverage": obligations_checked,
                 "coverage_bonus": coverage_bonus,
@@ -199,6 +256,18 @@ def verify_conjecture(conjecture: Mapping[str, Any], *, exhaustive_local: bool =
         )
     except ValidationError as exc:
         return Verdict(ok=False, kind="conjecture", message=str(exc), score_delta=-5)
+
+
+def local_obligation_keys(conjecture: Mapping[str, Any]) -> set[str]:
+    """Return deterministic local obligations covered by a normalized conjecture.
+
+    This legacy wrapper returns stable obligation IDs from
+    ``conjecture_golf.obligations``.
+    """
+
+    from .obligations import obligation_ids_for_conjecture
+
+    return set(obligation_ids_for_conjecture(conjecture))
 
 
 def check_counterexample(conjecture: Mapping[str, Any], before: Sequence[str]) -> Verdict:
@@ -213,8 +282,41 @@ def check_counterexample(conjecture: Mapping[str, Any], before: Sequence[str]) -
     try:
         normalized = validate_conjecture(conjecture)
         board = validate_board(list(before))
-        obligations = evaluate_on_board(normalized, board)
-        failures = [item for item in obligations if not item["holds"]]
+        expected = normalized["then"]["target_becomes"]
+        claim_kind = normalized.get("claim_kind", "sufficient")
+        obligations: list[dict[str, Any]] = []
+        failures: list[dict[str, Any]] = []
+        for row in range(BOARD_SIZE):
+            for col in range(BOARD_SIZE):
+                antecedent = antecedent_matches(normalized, board, row, col)
+                actual = _evolve_cell_fast(board, row, col)
+                target_produced = actual == expected
+                if claim_kind in {"sufficient", "equivalence"} and antecedent:
+                    item = {
+                        "row": row,
+                        "col": col,
+                        "expected": expected,
+                        "actual": actual,
+                        "holds": target_produced,
+                        "claim_kind": claim_kind,
+                        "antecedent": antecedent,
+                    }
+                    obligations.append(item)
+                    if not item["holds"]:
+                        failures.append(item)
+                if claim_kind in {"necessary", "equivalence"} and target_produced:
+                    item = {
+                        "row": row,
+                        "col": col,
+                        "expected": expected,
+                        "actual": actual,
+                        "holds": antecedent,
+                        "claim_kind": claim_kind,
+                        "antecedent": antecedent,
+                    }
+                    obligations.append(item)
+                    if not item["holds"]:
+                        failures.append(item)
         player = player_name_from_submission(normalized)
         if not failures:
             return Verdict(
@@ -273,8 +375,10 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Verify a Conjecture Golf JSON file.")
     parser.add_argument("path", help="Path to a conjecture or counterexample JSON file")
     parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON verdict")
+    parser.add_argument("--reveal-policy", choices=["full", "redacted"], default="full")
     args = parser.parse_args(argv)
     verdict = verify_file(args.path)
+    verdict = redact_verdict(verdict, reveal_policy=args.reveal_policy)
     indent = 2 if args.pretty else None
     print(json.dumps(verdict.to_dict(), ensure_ascii=False, indent=indent))
     return 0 if verdict.ok else 1

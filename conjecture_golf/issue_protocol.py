@@ -12,7 +12,7 @@ from typing import Any, Mapping
 
 from .replay import ReplayState, apply_command, replay_records
 from .score import leaderboard_rows, render_markdown
-from .verify import Verdict
+from .verify import Verdict, redact_verdict
 from .world import ValidationError
 
 COMMAND_PREFIX = "/cg"
@@ -60,10 +60,24 @@ def parse_issue_comment(text: str, *, author_login: str | None = None) -> IssueP
         raise ValidationError(f"invalid JSON after /cg: {exc.msg}") from exc
     if not isinstance(payload, dict):
         raise ValidationError("/cg payload must be a JSON object")
+    if "_meta" in payload:
+        raise ValidationError("_meta is reserved for public transcript metadata")
     command_type = payload.get("type")
     if command_type not in ALLOWED_COMMAND_TYPES:
         raise ValidationError(f"command type must be one of {sorted(ALLOWED_COMMAND_TYPES)}")
     return IssueParseResult(True, parsed=ParsedIssueCommand(command=payload, raw_json=raw))
+
+
+def attach_issue_metadata(command: Mapping[str, Any], comment: Mapping[str, Any]) -> dict[str, Any]:
+    meta: dict[str, Any] = {"source": "github_issue"}
+    user = comment.get("user") or {}
+    if isinstance(user, Mapping) and isinstance(user.get("login"), str):
+        meta["author_login"] = user["login"]
+    if "created_at" in comment:
+        meta["created_at"] = comment["created_at"]
+    if "id" in comment:
+        meta["comment_id"] = comment["id"]
+    return {**dict(command), "_meta": meta}
 
 
 def commands_from_issue_comments(comments: list[Mapping[str, Any]]) -> list[dict[str, Any]]:
@@ -81,13 +95,25 @@ def commands_from_issue_comments(comments: list[Mapping[str, Any]]) -> list[dict
         try:
             result = parse_issue_comment(body, author_login=author_login)
             if result.accepted and result.parsed:
-                commands.append(result.parsed.command)
+                commands.append(attach_issue_metadata(result.parsed.command, comment))
         except ValidationError as exc:
-            commands.append({"type": "score", "player": "invalid-comment", "_error": str(exc)})
+            invalid_player = author_login or "invalid-comment"
+            commands.append(
+                attach_issue_metadata(
+                    {
+                        "type": "invalid",
+                        "player": invalid_player,
+                        "message": str(exc),
+                        "reason": "malformed_issue_comment",
+                    },
+                    comment,
+                )
+            )
     return commands
 
 
-def render_verdict_markdown(verdict: Verdict) -> str:
+def render_verdict_markdown(verdict: Verdict, *, reveal_policy: str = "full") -> str:
+    verdict = redact_verdict(verdict, reveal_policy=reveal_policy)
     status = "✅" if verdict.ok else "❌"
     lines = [f"{status} **Conjecture Golf verdict**", "", f"{verdict.message}", ""]
     lines.append(f"Player: `{verdict.player}`")
@@ -105,7 +131,22 @@ def render_state_markdown(state: ReplayState) -> str:
     return "\n".join(["## Current leaderboard", "", render_markdown(rows)])
 
 
-def handle_issue_command(command: Mapping[str, Any], prior_commands: list[Mapping[str, Any]] | None = None) -> tuple[Verdict, ReplayState]:
-    state = replay_records(prior_commands or [])
-    verdict = apply_command(state, command)
+def handle_issue_command(
+    command: Mapping[str, Any],
+    prior_commands: list[Mapping[str, Any]] | None = None,
+    *,
+    min_player_interval_seconds: int = 0,
+    season_scoring: bool = True,
+) -> tuple[Verdict, ReplayState]:
+    state = replay_records(
+        prior_commands or [],
+        min_player_interval_seconds=min_player_interval_seconds,
+        season_scoring=season_scoring,
+    )
+    verdict = apply_command(
+        state,
+        command,
+        min_player_interval_seconds=min_player_interval_seconds,
+        season_scoring=season_scoring,
+    )
     return verdict, state

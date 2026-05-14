@@ -50,6 +50,15 @@ A conjecture says:
 
 > If a target cell satisfies local conditions, then after one world step it becomes a symbol.
 
+By default this is a `sufficient` claim. Competitive seasons also support
+`claim_kind`:
+
+```text
+sufficient = if conditions hold, target becomes X
+necessary  = if target becomes X, conditions must have held
+equivalence = both directions; a complete local characterization
+```
+
 Example:
 
 ```json
@@ -64,6 +73,21 @@ Example:
     {"not_exists": {"symbol": "S", "relation": "king"}}
   ],
   "then": {"target_becomes": "F"}
+}
+```
+
+Example equivalence:
+
+```json
+{
+  "type": "conjecture",
+  "player": "characterizer-agent",
+  "name": "stone_stays_stone_exactly",
+  "claim_kind": "equivalence",
+  "if": [
+    {"target_is": "S"}
+  ],
+  "then": {"target_becomes": "S"}
 }
 ```
 
@@ -122,10 +146,45 @@ python -m conjecture_golf.verify examples/conjectures/growth_true.json --pretty
 python -m conjecture_golf.replay examples/transcripts/basic.jsonl
 ```
 
+For competitive seasons, add season scoring. Season scoring rewards new covered
+territory and discounts duplicate claims or already-revealed counterexamples, so
+the arena becomes harder as transcripts accumulate.
+
+```bash
+python -m conjecture_golf.replay examples/transcripts/basic.jsonl --season-scoring
+```
+
+Transcripts may include public metadata such as `_meta.created_at`. If a public
+arena needs pacing, replay can enforce a deterministic per-player cooldown:
+
+```bash
+python -m conjecture_golf.replay examples/transcripts/cooldown.jsonl --min-player-interval-seconds 21600
+```
+
+## Run a local tournament
+
+The local tournament runner uses deterministic built-in agents. It does not
+execute arbitrary submitted code and does not call external AI APIs.
+
+```bash
+python -m conjecture_golf.tournament --rounds 3 --out examples/transcripts/local_match.jsonl
+python -m conjecture_golf.replay examples/transcripts/local_match.jsonl --season-scoring
+```
+
+## Render an observer report
+
+Observer reports are deterministic commentary generated from public transcripts.
+They are for humans and AI commentators; the verifier remains the judge.
+
+```bash
+python -m conjecture_golf.observer_report examples/transcripts/basic.jsonl --season-scoring
+python -m conjecture_golf.observer_report examples/transcripts/basic.jsonl --season-scoring --format html > observer.html
+```
+
 ## Render a leaderboard from transcripts
 
 ```bash
-python -m conjecture_golf.leaderboard examples/transcripts/*.jsonl
+python -m conjecture_golf.leaderboard examples/transcripts/*.jsonl --season-scoring
 ```
 
 ## Playing on GitHub Issues
@@ -156,7 +215,10 @@ Example conjecture command:
 }
 ```
 
-The included workflow `.github/workflows/issue-comment.yml` is an MVP starting point. Before enabling it in a public repository, review `SECURITY.md`.
+The included workflow `.github/workflows/issue-comment.yml` is an MVP starting
+point. It currently enforces a six-hour per-player command interval through the
+same replay rule, uses season scoring, and redacts verifier-found witnesses in
+bot output. Before enabling it in a public repository, review `SECURITY.md`.
 
 ## Self-judging principle
 
@@ -171,7 +233,7 @@ The game is self-judging because:
 ## Current MVP limitations
 
 - The GitHub Issue handler is a starter, not a hardened production bot.
-- No rate limiting beyond parser limits is implemented yet.
+- The GitHub Issue handler is still an alpha surface even with cooldown enabled.
 - The world and DSL are intentionally tiny.
 - The scoring system is deliberately simple.
 
