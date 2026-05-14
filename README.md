@@ -128,6 +128,27 @@ python -m pip install -e '.[dev]'
 python -m pytest -q
 ```
 
+## Fast path to Season 0
+
+Season 0 is the frozen local test season. Read [SEASON0_RULES.md](SEASON0_RULES.md)
+for the rules and [SEASON0_OPERATOR_RUNBOOK.md](SEASON0_OPERATOR_RUNBOOK.md) for
+the full operator procedure.
+
+Quick local flow:
+
+```bash
+python -m pip install -e '.[dev]'
+python -m pytest -q
+python -m conjecture_golf.season0 init --out examples/transcripts/season0_match.jsonl
+python -m conjecture_golf.season0 pack examples/transcripts/season0_match.jsonl --out /tmp/cg-pack-r1
+python -m conjecture_golf.season0 apply examples/transcripts/season0_match.jsonl moves/player_name_r1.json --append
+python -m conjecture_golf.season0 report examples/transcripts/season0_match.jsonl --out reports
+python -m conjecture_golf.season_eval examples/transcripts/season0_match.jsonl
+```
+
+The generated match pack includes `AI_ONE_PAGE_QUICKSTART.md`, transcript,
+frontier report, observer report, templates, and the Season 0 manifest.
+
 ## Run the demo
 
 ```bash

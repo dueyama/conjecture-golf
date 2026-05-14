@@ -14,6 +14,15 @@ def test_local_tournament_generates_replayable_transcript(tmp_path: Path):
     assert [v.to_dict() for v in replayed.verdicts] == [v.to_dict() for v in result.state.verdicts]
 
 
+def test_tournament_writer_creates_parent_directories(tmp_path: Path):
+    result = run_tournament(["rule"], rounds=1, seed=0)
+    transcript = tmp_path / "nested" / "match.jsonl"
+
+    write_jsonl(result.commands, transcript)
+
+    assert transcript.exists()
+
+
 def test_counterexample_agent_refutes_greedy_agent():
     result = run_tournament(["greedy", "counterexample"], rounds=1, seed=0)
     rows = leaderboard_rows(result.state.scores)

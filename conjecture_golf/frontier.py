@@ -16,6 +16,7 @@ from typing import Any
 
 from .obligations import all_local_obligation_ids, summarize_obligation_ids
 from .replay import ReplayState, iter_jsonl, replay_records
+from .season import season_id
 
 
 @dataclass(frozen=True)
@@ -126,6 +127,8 @@ def render_frontier_markdown(report: FrontierReport, *, title: str = "Obligation
     data = report.to_dict()
     lines = [
         f"# {title}",
+        "",
+        f"Season: `{season_id()}`",
         "",
         "| metric | value |",
         "| --- | ---: |",

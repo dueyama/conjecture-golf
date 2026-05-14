@@ -11,6 +11,7 @@ from typing import Any
 from .frontier import build_frontier_report_from_records, render_frontier_markdown
 from .observer_report import render_html_report, render_report
 from .replay import iter_jsonl
+from .season import load_season_manifest
 
 
 WORLD_SUMMARY = """# World Summary
@@ -93,6 +94,37 @@ COUNTEREXAMPLE_TEMPLATE: dict[str, Any] = {
 SCORE_TEMPLATE: dict[str, Any] = {"type": "score", "player": "your-agent-name"}
 
 
+AI_ONE_PAGE_QUICKSTART = """# AI One-Page Quickstart
+
+You are playing Conjecture Golf.
+
+Goal:
+Submit one useful move.
+
+Read:
+1. `transcript.jsonl`
+2. `frontier.md`
+3. `observer_report.md`
+4. `templates/`
+
+Output exactly one JSON object. No prose.
+
+Choose one:
+
+- `conjecture`: propose a compact law that covers new obligations.
+- `counterexample`: refute an existing false conjecture with a before-board.
+
+Rules:
+
+- Do not invent syntax.
+- Do not use code execution.
+- Do not submit a stale duplicate.
+- Prefer compact rules.
+- Prefer original counterexamples.
+- Your output will be checked by deterministic replay.
+"""
+
+
 def _repo_root() -> Path:
     return Path(__file__).resolve().parent.parent
 
@@ -120,11 +152,20 @@ def build_match_pack(
     shutil.copyfile(transcript_path, transcript_out)
 
     repo_root = _repo_root()
-    for filename in ["AI_PLAYER_GUIDE.md", "HUMAN_OBSERVER_GUIDE.md", "README.md", "SECURITY.md"]:
+    for filename in [
+        "AI_PLAYER_GUIDE.md",
+        "HUMAN_OBSERVER_GUIDE.md",
+        "README.md",
+        "SECURITY.md",
+        "SEASON0_RULES.md",
+        "SEASON0_OPERATOR_RUNBOOK.md",
+        "season_manifest.json",
+    ]:
         source = repo_root / filename
         if source.exists():
             shutil.copyfile(source, out_dir / filename)
 
+    (out_dir / "AI_ONE_PAGE_QUICKSTART.md").write_text(AI_ONE_PAGE_QUICKSTART, encoding="utf-8")
     (out_dir / "world_summary.md").write_text(WORLD_SUMMARY, encoding="utf-8")
     (out_dir / "dsl_summary.md").write_text(DSL_SUMMARY, encoding="utf-8")
     _write_json(templates_dir / "conjecture.json", CONJECTURE_TEMPLATE)
@@ -154,12 +195,16 @@ def build_match_pack(
     (out_dir / "frontier.md").write_text(render_frontier_markdown(frontier), encoding="utf-8")
     _write_json(out_dir / "frontier.json", frontier.to_dict())
 
+    files = sorted(str(path.relative_to(out_dir)) for path in out_dir.rglob("*") if path.is_file())
+    if "manifest.json" not in files:
+        files.append("manifest.json")
     manifest = {
+        "season": load_season_manifest(),
         "transcript": "transcript.jsonl",
         "season_scoring": season_scoring,
         "min_player_interval_seconds": min_player_interval_seconds,
         "reveal_policy": reveal_policy,
-        "files": sorted(str(path.relative_to(out_dir)) for path in out_dir.rglob("*") if path.is_file()),
+        "files": sorted(files),
     }
     _write_json(out_dir / "manifest.json", manifest)
     return {

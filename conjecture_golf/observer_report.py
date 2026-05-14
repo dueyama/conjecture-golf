@@ -10,6 +10,7 @@ from typing import Any
 from .frontier import build_frontier_report
 from .replay import ReplayState, apply_command, iter_jsonl
 from .score import leaderboard_rows, render_markdown
+from .season import season_id
 from .verify import redact_verdict
 
 
@@ -265,7 +266,7 @@ def render_report(
     reveal_policy: str = "full",
 ) -> str:
     state = ReplayState()
-    lines = [f"# {title}", ""]
+    lines = [f"# {title}", "", f"Season: `{season_id()}`", ""]
     for move_no, command in enumerate(records, start=1):
         verdict = apply_command(
             state,
@@ -418,6 +419,7 @@ def render_html_report(
 <body>
   <main>
     <h1>{html.escape(title)}</h1>
+    <p>Season: <code>{html.escape(season_id())}</code></p>
     <section>
       <h2>Moves</h2>
       {"".join(moves)}

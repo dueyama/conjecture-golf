@@ -25,8 +25,12 @@ def test_match_pack_contains_reports_and_templates(tmp_path):
     build_match_pack(transcript, out)
 
     assert (out / "AI_PLAYER_GUIDE.md").exists()
+    quickstart = (out / "AI_ONE_PAGE_QUICKSTART.md").read_text(encoding="utf-8")
+    assert "Output exactly one JSON object" in quickstart
     assert (out / "observer_report.md").read_text(encoding="utf-8").count("Newspaper") == 1
     assert (out / "frontier.md").exists()
     assert (out / "templates" / "conjecture.json").exists()
     manifest = json.loads((out / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["season"]["season_id"] == "season_0"
+    assert "AI_ONE_PAGE_QUICKSTART.md" in manifest["files"]
     assert "frontier.json" in manifest["files"]

@@ -1,0 +1,14 @@
+{
+  "season_id": "season_0",
+  "world_version": "season_0",
+  "dsl_version": "dsl_0",
+  "scoring_version": "season_scoring_0",
+  "reveal_policy_default": "redacted",
+  "board_size": 5,
+  "symbols": [".", "F", "W", "S"],
+  "relations": ["orthogonal", "diagonal", "king"],
+  "condition_kinds": ["target_is", "exists", "not_exists", "count_at_least", "count_exactly"],
+  "claim_kinds": ["sufficient", "necessary", "equivalence"],
+  "transcript_format": "jsonl",
+  "judge": "deterministic_python_replay"
+}

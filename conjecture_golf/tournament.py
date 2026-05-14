@@ -52,7 +52,9 @@ def run_tournament(
 
 
 def write_jsonl(commands: list[dict[str, Any]], path: str | Path) -> None:
-    with Path(path).open("w", encoding="utf-8") as f:
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as f:
         for command in commands:
             f.write(json.dumps(command, ensure_ascii=False, separators=(",", ":")))
             f.write("\n")
