@@ -15,6 +15,15 @@ TRUE_FLOWER = {
     "then": {"target_becomes": "F"},
 }
 
+STONE_EQUIVALENCE = {
+    "type": "conjecture",
+    "player": "stone",
+    "name": "stone_stays_stone_exactly",
+    "claim_kind": "equivalence",
+    "if": [{"target_is": "S"}],
+    "then": {"target_becomes": "S"},
+}
+
 
 def test_replay_basic_transcript_is_deterministic():
     a = replay_file("examples/transcripts/basic.jsonl")
@@ -95,6 +104,16 @@ def test_season_scoring_rejects_duplicate_conjecture():
     assert state.verdicts[0].details["season_new_obligations"] > 0
     assert not state.verdicts[1].ok
     assert state.verdicts[1].details["reason"] == "duplicate_conjecture"
+    assert state.verdicts[1].details["score_components"]["duplicate_conjecture_penalty"] == -2
+
+
+def test_season_scoring_diagnostics_split_equivalence_sides():
+    state = replay_records([STONE_EQUIVALENCE], season_scoring=True)
+
+    components = state.verdicts[0].details["score_components"]
+    assert components["new_sufficient_obligations"] > 0
+    assert components["new_necessary_obligations"] > 0
+    assert state.verdicts[0].details["season_total_obligation_counts"]["necessary"] > 0
 
 
 def test_season_scoring_gives_no_points_for_stale_true_specialization():
@@ -141,6 +160,8 @@ def test_season_scoring_discounts_verifier_revealed_counterexample():
     assert state.verdicts[1].ok
     assert state.verdicts[1].score_delta == 5
     assert state.verdicts[1].details["season_score_basis"] == "verifier_revealed_counterexample"
+    assert state.verdicts[1].details["score_components"]["verifier_revealed_penalty"] == 10
+    assert state.verdicts[1].details["score_components"]["target_value_observed"] > 0
 
 
 def test_season_scoring_penalizes_duplicate_witness_patterns_across_targets():

@@ -6,8 +6,9 @@ scoring uses obligation IDs to reward new territory and discount stale claims.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
+from functools import lru_cache
 from typing import Any
 
 from .dsl import validate_conjecture
@@ -15,6 +16,8 @@ from .world import BOARD_SIZE, Board, ValidationError, related_coords, tiny_loca
 
 WORLD_VERSION = "season_0"
 CLAIM_KIND_SUFFICIENT = "sufficient"
+CLAIM_KIND_NECESSARY = "necessary"
+CLAIM_KINDS = (CLAIM_KIND_SUFFICIENT, CLAIM_KIND_NECESSARY)
 
 
 @dataclass(frozen=True)
@@ -108,6 +111,71 @@ def obligation_id(
     )
 
 
+def parse_obligation_id(identifier: str) -> dict[str, Any]:
+    parts = identifier.split(":")
+    if len(parts) != 5:
+        raise ValidationError("obligation ID must have five colon-separated parts")
+    parsed: dict[str, Any] = {"world_version": parts[0]}
+    for part in parts[1:]:
+        if "=" not in part:
+            raise ValidationError("obligation ID part must be key=value")
+        key, value = part.split("=", 1)
+        parsed[key] = value
+    if parsed.get("claim") not in set(CLAIM_KINDS):
+        raise ValidationError("obligation ID has unknown claim kind")
+    before = parsed.get("before")
+    after = parsed.get("after")
+    if before not in {".", "F", "W", "S"} or after not in {".", "F", "W", "S"}:
+        raise ValidationError("obligation ID has unknown symbol")
+    try:
+        parsed["local_index"] = int(str(parsed["local"]))
+    except (KeyError, ValueError) as exc:
+        raise ValidationError("obligation ID has invalid local index") from exc
+    return parsed
+
+
+@lru_cache(maxsize=1)
+def all_local_obligation_ids(*, world_version: str = WORLD_VERSION) -> frozenset[str]:
+    obligations: set[str] = set()
+    for index, local in enumerate(tiny_local_boards(size=3)):
+        board = _center_embed_3x3(local)
+        actual = _evolve_cell_fast(board, 2, 2)
+        before = board[2][2]
+        for claim_kind in CLAIM_KINDS:
+            obligations.add(
+                obligation_id(
+                    world_version=world_version,
+                    center_before_symbol=before,
+                    center_after_symbol=actual,
+                    local_neighborhood_index=index,
+                    claim_kind=claim_kind,
+                )
+            )
+    return frozenset(obligations)
+
+
+def summarize_obligation_ids(obligations: Iterable[str]) -> dict[str, Any]:
+    by_claim_kind = {claim_kind: 0 for claim_kind in CLAIM_KINDS}
+    by_transition: dict[str, int] = {}
+    by_claim_and_transition: dict[str, int] = {}
+    total = 0
+    for obligation in obligations:
+        parsed = parse_obligation_id(obligation)
+        claim_kind = str(parsed["claim"])
+        transition = f"{parsed['before']}->{parsed['after']}"
+        by_claim_kind[claim_kind] = by_claim_kind.get(claim_kind, 0) + 1
+        by_transition[transition] = by_transition.get(transition, 0) + 1
+        key = f"{claim_kind}:{transition}"
+        by_claim_and_transition[key] = by_claim_and_transition.get(key, 0) + 1
+        total += 1
+    return {
+        "total": total,
+        "by_claim_kind": by_claim_kind,
+        "by_transition": dict(sorted(by_transition.items())),
+        "by_claim_and_transition": dict(sorted(by_claim_and_transition.items())),
+    }
+
+
 def obligation_ids_for_conjecture(
     conjecture: Mapping[str, Any],
     *,
@@ -139,7 +207,7 @@ def obligation_ids_for_conjecture(
                     center_before_symbol=board[2][2],
                     center_after_symbol=expected,
                     local_neighborhood_index=index,
-                    claim_kind="necessary",
+                    claim_kind=CLAIM_KIND_NECESSARY,
                 )
             )
     return frozenset(obligations)

@@ -21,6 +21,16 @@ python -m conjecture_golf.observer_report examples/transcripts/basic.jsonl --sea
 python -m conjecture_golf.observer_report examples/transcripts/basic.jsonl --season-scoring --format html > observer.html
 ```
 
+The observer report includes a newspaper section with the final leader, best
+law, best equivalence, sharpest counterexample, biggest failed conjecture, most
+stale move, and an open frontier headline.
+
+You can also inspect the frontier directly:
+
+```bash
+python -m conjecture_golf.frontier examples/transcripts/basic.jsonl
+```
+
 An AI commentator can expand that report into a more lively explanation, but
 commentary is never the judge. Replay and the verifier remain authoritative.
 
@@ -43,3 +53,10 @@ repeat commands are visible in replay.
 Season scoring makes the arena progressively harder: accepted conjectures mark
 territory as known, duplicate claims stop helping, and obvious counterexamples
 are worth less than fresh refutations.
+
+For closed local tests, a match pack can bundle the transcript, guides, reports,
+frontier, and JSON templates for AI participants:
+
+```bash
+python -m conjecture_golf.match_pack examples/transcripts/basic.jsonl --out /tmp/conjecture-golf-pack
+```

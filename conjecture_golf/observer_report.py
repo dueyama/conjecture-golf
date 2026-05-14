@@ -7,6 +7,7 @@ import html
 from collections.abc import Iterable, Mapping
 from typing import Any
 
+from .frontier import build_frontier_report
 from .replay import ReplayState, apply_command, iter_jsonl
 from .score import leaderboard_rows, render_markdown
 from .verify import redact_verdict
@@ -132,6 +133,129 @@ def _interesting_points(state: ReplayState) -> list[str]:
     return points
 
 
+def _verdict_name(verdict: Any) -> str:
+    details = verdict.details or {}
+    name = details.get("name")
+    if isinstance(name, str) and name:
+        return name
+    return str(verdict.kind)
+
+
+def _newspaper_items(state: ReplayState) -> dict[str, Any]:
+    rows = leaderboard_rows(state.scores)
+    accepted = [v for v in state.verdicts if v.kind == "conjecture" and v.ok]
+    counterexamples = [v for v in state.verdicts if v.kind == "counterexample" and v.ok]
+    failed = [v for v in state.verdicts if v.kind == "conjecture" and not v.ok]
+    stale = [
+        v
+        for v in state.verdicts
+        if (v.details or {}).get("season_score_basis") in {"stale_true_conjecture", "duplicate_conjecture"}
+    ]
+
+    laws = [v for v in accepted if (v.details or {}).get("claim_kind", "sufficient") != "equivalence"]
+    equivalences = [v for v in accepted if (v.details or {}).get("claim_kind") == "equivalence"]
+    frontier = build_frontier_report(state)
+
+    return {
+        "leader": rows[0] if rows else None,
+        "best_law": max(laws, key=lambda v: (v.score_delta, (v.details or {}).get("season_new_obligations", 0)), default=None),
+        "best_equivalence": max(
+            equivalences,
+            key=lambda v: (v.score_delta, (v.details or {}).get("season_new_obligations", 0)),
+            default=None,
+        ),
+        "sharpest_counterexample": max(
+            counterexamples,
+            key=lambda v: (v.score_delta, (v.details or {}).get("minimality_bonus", 0)),
+            default=None,
+        ),
+        "biggest_failed": max(
+            failed,
+            key=lambda v: ((v.details or {}).get("season_potential_obligations", 0), abs(v.score_delta)),
+            default=None,
+        ),
+        "most_stale": max(
+            stale,
+            key=lambda v: ((v.details or {}).get("season_known_obligations", 0), abs(v.score_delta)),
+            default=None,
+        ),
+        "open_frontier": frontier.open_frontier[:3],
+    }
+
+
+def _newspaper_markdown(state: ReplayState) -> str:
+    items = _newspaper_items(state)
+    lines = ["## Newspaper", ""]
+    leader = items["leader"]
+    if leader:
+        lines.append(f"- Final leader: `{leader['player']}` with `{leader['total']}` points.")
+    else:
+        lines.append("- Final leader: no scored moves yet.")
+
+    best_law = items["best_law"]
+    if best_law:
+        lines.append(f"- Best law: `{_verdict_name(best_law)}` by `{best_law.player}` for `{best_law.score_delta}` points.")
+    else:
+        lines.append("- Best law: none accepted yet.")
+
+    best_equivalence = items["best_equivalence"]
+    if best_equivalence:
+        lines.append(
+            f"- Best equivalence: `{_verdict_name(best_equivalence)}` by `{best_equivalence.player}` "
+            f"for `{best_equivalence.score_delta}` points."
+        )
+    else:
+        lines.append("- Best equivalence: none accepted yet.")
+
+    sharpest = items["sharpest_counterexample"]
+    if sharpest:
+        lines.append(
+            f"- Sharpest counterexample: `{sharpest.player}` scored `{sharpest.score_delta}` "
+            f"against `{(sharpest.details or {}).get('against', 'a conjecture')}`."
+        )
+    else:
+        lines.append("- Sharpest counterexample: none accepted yet.")
+
+    failed = items["biggest_failed"]
+    if failed:
+        lines.append(
+            f"- Biggest failed conjecture: `{_verdict_name(failed)}` exposed "
+            f"`{(failed.details or {}).get('season_potential_obligations', 0)}` potential obligations."
+        )
+    else:
+        lines.append("- Biggest failed conjecture: none refuted yet.")
+
+    stale = items["most_stale"]
+    if stale:
+        lines.append(
+            f"- Most stale move: `{_verdict_name(stale)}` with basis "
+            f"`{(stale.details or {}).get('season_score_basis')}`."
+        )
+    else:
+        lines.append("- Most stale move: none detected yet.")
+
+    if items["open_frontier"]:
+        frontier = ", ".join(
+            f"{row['claim_kind']} {row['transition']} ({row['count']})"
+            for row in items["open_frontier"]
+        )
+        lines.append(f"- Open frontier: {frontier}.")
+    else:
+        lines.append("- Open frontier: no uncovered obligations remain.")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def _newspaper_html(state: ReplayState) -> str:
+    markdown = _newspaper_markdown(state)
+    items = [
+        line[2:]
+        for line in markdown.splitlines()
+        if line.startswith("- ")
+    ]
+    return "<ul>" + "".join(f"<li>{html.escape(item)}</li>" for item in items) + "</ul>"
+
+
 def render_report(
     records: Iterable[Mapping[str, Any]],
     *,
@@ -154,6 +278,7 @@ def render_report(
         lines.append("")
 
     lines.extend(["## Leaderboard", "", render_markdown(leaderboard_rows(state.scores)), ""])
+    lines.append(_newspaper_markdown(state))
     lines.extend(["## Interesting Points", ""])
     lines.extend(f"- {point}" for point in _interesting_points(state))
     lines.extend(
@@ -257,6 +382,7 @@ def render_html_report(
 
     rows = leaderboard_rows(state.scores)
     points = "\n".join(f"<li>{html.escape(point)}</li>" for point in _interesting_points(state))
+    newspaper = _newspaper_html(state)
     return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -299,6 +425,10 @@ def render_html_report(
     <section>
       <h2>Leaderboard</h2>
       {_leaderboard_html(rows)}
+    </section>
+    <section>
+      <h2>Newspaper</h2>
+      {newspaper}
     </section>
     <section>
       <h2>Interesting Points</h2>

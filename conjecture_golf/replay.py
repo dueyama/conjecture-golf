@@ -15,7 +15,7 @@ from typing import Any, Iterable, Mapping
 
 from .dsl import player_name_from_submission, validate_conjecture
 from .canonical import witness_id
-from .obligations import ObligationLedger, obligation_ids_for_conjecture
+from .obligations import ObligationLedger, obligation_ids_for_conjecture, summarize_obligation_ids
 from .score import PlayerScore, apply_verdict, leaderboard_rows, render_markdown
 from .verify import Verdict, check_counterexample, verify_conjecture
 from .world import ValidationError
@@ -33,6 +33,7 @@ class ReplayState:
     auto_counterexample_witness_ids: dict[str, str] = field(default_factory=dict)
     known_witness_ids: set[str] = field(default_factory=set)
     countered_conjectures: set[str] = field(default_factory=set)
+    conjecture_target_values: dict[str, int] = field(default_factory=dict)
 
     def apply(self, verdict: Verdict) -> None:
         self.verdicts.append(verdict)
@@ -201,10 +202,44 @@ def _remember_false_conjecture_counterexample(state: ReplayState, verdict: Verdi
         state.auto_counterexample_witness_ids[name] = found_witness_id
 
 
+def _target_value_for_obligations(obligations: frozenset[str]) -> int:
+    return min(30, max(1, len(obligations) // 2048))
+
+
+def _obligation_counts(obligations: frozenset[str]) -> dict[str, int]:
+    summary = summarize_obligation_ids(obligations)
+    by_claim_kind = summary["by_claim_kind"]
+    return {
+        "sufficient": int(by_claim_kind.get("sufficient", 0)),
+        "necessary": int(by_claim_kind.get("necessary", 0)),
+    }
+
+
 def _season_adjust_conjecture(state: ReplayState, verdict: Verdict, conjecture: Mapping[str, Any]) -> Verdict:
     _remember_false_conjecture_counterexample(state, verdict)
     if verdict.kind != "conjecture" or not verdict.ok:
-        return verdict
+        try:
+            obligations = obligation_ids_for_conjecture(conjecture)
+        except ValidationError:
+            return verdict
+        details = verdict.details or {}
+        name = details.get("name")
+        if isinstance(name, str):
+            state.conjecture_target_values[name] = _target_value_for_obligations(obligations)
+        return replace(
+            verdict,
+            details={
+                **details,
+                "season_potential_obligations": len(obligations),
+                "season_potential_obligation_counts": _obligation_counts(obligations),
+                "season_target_value": _target_value_for_obligations(obligations),
+                "score_components": {
+                    "false_conjecture_penalty": verdict.score_delta,
+                    "target_value_observed": _target_value_for_obligations(obligations),
+                    "final": verdict.score_delta,
+                },
+            },
+        )
 
     signature = _conjecture_signature(conjecture)
     if signature in state.conjecture_signatures:
@@ -214,29 +249,58 @@ def _season_adjust_conjecture(state: ReplayState, verdict: Verdict, conjecture: 
             player=verdict.player,
             message="Duplicate conjecture; season scoring rewards new claims only.",
             score_delta=-2,
-            details={"reason": "duplicate_conjecture"},
+            details={
+                "reason": "duplicate_conjecture",
+                "season_score_basis": "duplicate_conjecture",
+                "score_components": {
+                    "duplicate_conjecture_penalty": -2,
+                    "final": -2,
+                },
+            },
         )
 
     obligations = obligation_ids_for_conjecture(conjecture)
     coverage = state.obligation_ledger.measure(obligations)
+    new_counts = _obligation_counts(coverage.new_obligations)
+    stale_counts = _obligation_counts(coverage.stale_obligations)
+    total_counts = _obligation_counts(coverage.obligations)
     state.conjecture_signatures.add(signature)
+    details = verdict.details or {}
+    name = details.get("name")
+    target_value = _target_value_for_obligations(coverage.obligations)
+    if isinstance(name, str):
+        state.conjecture_target_values[name] = target_value
     if not coverage.new_obligations:
         adjusted = replace(
             verdict,
             message=f"{verdict.message} Season scoring found no new covered territory.",
             score_delta=0,
             details={
-                **(verdict.details or {}),
+                **details,
                 "season_new_obligations": 0,
+                "season_new_obligation_counts": new_counts,
                 "season_known_obligations": len(coverage.stale_obligations),
+                "season_known_obligation_counts": stale_counts,
+                "season_total_obligation_counts": total_counts,
+                "season_target_value": target_value,
                 "season_score_basis": "stale_true_conjecture",
                 "season_obligation_examples": sorted(coverage.obligations)[:3],
+                "score_components": {
+                    "base_law": 10,
+                    "new_sufficient_obligations": new_counts["sufficient"],
+                    "new_necessary_obligations": new_counts["necessary"],
+                    "stale_sufficient_obligations": stale_counts["sufficient"],
+                    "stale_necessary_obligations": stale_counts["necessary"],
+                    "novelty_bonus": 0,
+                    "complexity_penalty": int(details.get("complexity", 0)),
+                    "stale_penalty": 10,
+                    "final": 0,
+                },
             },
         )
         return adjusted
 
     state.obligation_ledger.mark(coverage)
-    details = verdict.details or {}
     complexity = int(details.get("complexity", 0))
     novelty_bonus = min(60, len(coverage.new_obligations) // 512)
     score_delta = max(1, 10 + novelty_bonus - complexity)
@@ -247,11 +311,25 @@ def _season_adjust_conjecture(state: ReplayState, verdict: Verdict, conjecture: 
         details={
             **details,
             "season_new_obligations": len(coverage.new_obligations),
+            "season_new_obligation_counts": new_counts,
             "season_known_obligations": len(coverage.stale_obligations),
+            "season_known_obligation_counts": stale_counts,
             "season_total_obligations": len(coverage.obligations),
+            "season_total_obligation_counts": total_counts,
             "season_score_basis": "new_obligations",
             "season_novelty_bonus": novelty_bonus,
+            "season_target_value": target_value,
             "season_obligation_examples": sorted(coverage.new_obligations)[:3],
+            "score_components": {
+                "base_law": 10,
+                "new_sufficient_obligations": new_counts["sufficient"],
+                "new_necessary_obligations": new_counts["necessary"],
+                "stale_sufficient_obligations": stale_counts["sufficient"],
+                "stale_necessary_obligations": stale_counts["necessary"],
+                "novelty_bonus": novelty_bonus,
+                "complexity_penalty": complexity,
+                "final": score_delta,
+            },
         },
     )
 
@@ -267,6 +345,27 @@ def _season_adjust_counterexample(state: ReplayState, verdict: Verdict, command:
     details = verdict.details or {}
     minimality_bonus = int(details.get("minimality_bonus", 0))
     found_witness_id = _verdict_witness_id(verdict)
+    target_value = state.conjecture_target_values.get(against, 0)
+
+    def components(
+        *,
+        final: int,
+        minimality_bonus_used: int = 0,
+        duplicate_penalty: int = 0,
+        already_countered_penalty: int = 0,
+        verifier_revealed_penalty: int = 0,
+    ) -> dict[str, int]:
+        return {
+            "base_refutation": 15,
+            "target_value_observed": target_value,
+            "target_value_used": 0,
+            "minimality_bonus_available": minimality_bonus,
+            "minimality_bonus_used": minimality_bonus_used,
+            "duplicate_penalty": duplicate_penalty,
+            "already_countered_penalty": already_countered_penalty,
+            "verifier_revealed_penalty": verifier_revealed_penalty,
+            "final": final,
+        }
 
     if against in state.countered_conjectures:
         if found_witness_id is not None:
@@ -275,7 +374,12 @@ def _season_adjust_counterexample(state: ReplayState, verdict: Verdict, command:
             verdict,
             message=f"{verdict.message} Season scoring: this conjecture was already countered.",
             score_delta=1,
-            details={**details, "season_score_basis": "already_countered"},
+            details={
+                **details,
+                "against": against,
+                "season_score_basis": "already_countered",
+                "score_components": components(final=1, already_countered_penalty=14),
+            },
         )
 
     state.countered_conjectures.add(against)
@@ -284,7 +388,13 @@ def _season_adjust_counterexample(state: ReplayState, verdict: Verdict, command:
             verdict,
             message=f"{verdict.message} Season scoring: this witness pattern is already known.",
             score_delta=2,
-            details={**details, "season_score_basis": "duplicate_witness", "witness_id": found_witness_id},
+            details={
+                **details,
+                "against": against,
+                "season_score_basis": "duplicate_witness",
+                "witness_id": found_witness_id,
+                "score_components": components(final=2, duplicate_penalty=13),
+            },
         )
 
     if (
@@ -305,8 +415,10 @@ def _season_adjust_counterexample(state: ReplayState, verdict: Verdict, command:
             score_delta=5,
             details={
                 **details,
+                "against": against,
                 "season_score_basis": "verifier_revealed_counterexample",
                 "witness_id": found_witness_id,
+                "score_components": components(final=5, verifier_revealed_penalty=10),
             },
         )
 
@@ -315,7 +427,13 @@ def _season_adjust_counterexample(state: ReplayState, verdict: Verdict, command:
     return replace(
         verdict,
         score_delta=15 + minimality_bonus,
-        details={**details, "season_score_basis": "novel_first_counterexample", "witness_id": found_witness_id},
+        details={
+            **details,
+            "against": against,
+            "season_score_basis": "novel_first_counterexample",
+            "witness_id": found_witness_id,
+            "score_components": components(final=15 + minimality_bonus, minimality_bonus_used=minimality_bonus),
+        },
     )
 
 

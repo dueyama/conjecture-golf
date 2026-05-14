@@ -1,4 +1,11 @@
-from conjecture_golf.obligations import ObligationLedger, obligation_id, obligation_ids_for_conjecture
+from conjecture_golf.obligations import (
+    ObligationLedger,
+    all_local_obligation_ids,
+    obligation_id,
+    obligation_ids_for_conjecture,
+    parse_obligation_id,
+    summarize_obligation_ids,
+)
 
 
 TRUE_FLOWER = {
@@ -31,7 +38,7 @@ STONE_NECESSARY = {
 
 
 def test_obligation_id_is_stable_and_readable():
-    assert (
+    identifier = (
         obligation_id(
             world_version="season_0",
             center_before_symbol=".",
@@ -39,8 +46,13 @@ def test_obligation_id_is_stable_and_readable():
             local_neighborhood_index=42,
             claim_kind="sufficient",
         )
-        == "season_0:claim=sufficient:before=.:after=F:local=000042"
     )
+    assert identifier == "season_0:claim=sufficient:before=.:after=F:local=000042"
+    parsed = parse_obligation_id(identifier)
+    assert parsed["claim"] == "sufficient"
+    assert parsed["before"] == "."
+    assert parsed["after"] == "F"
+    assert parsed["local_index"] == 42
 
 
 def test_obligation_ids_for_conjecture_are_deterministic():
@@ -71,3 +83,12 @@ def test_equivalence_coverage_subsumes_necessary_side():
     necessary_obligations = obligation_ids_for_conjecture(STONE_NECESSARY)
 
     assert necessary_obligations < equivalence_obligations
+
+
+def test_universe_and_summary_split_claim_sides():
+    universe = all_local_obligation_ids()
+    summary = summarize_obligation_ids(universe)
+
+    assert len(universe) > 0
+    assert summary["total"] == len(universe)
+    assert summary["by_claim_kind"]["sufficient"] == summary["by_claim_kind"]["necessary"]

@@ -103,6 +103,7 @@ You can also inspect a deterministic local participation transcript:
 python -m conjecture_golf.tournament --rounds 3 --out examples/transcripts/local_match.jsonl
 python -m conjecture_golf.replay examples/transcripts/local_match.jsonl --season-scoring
 python -m conjecture_golf.observer_report examples/transcripts/local_match.jsonl --season-scoring
+python -m conjecture_golf.frontier examples/transcripts/local_match.jsonl
 ```
 
 Public GitHub arenas may enforce a per-player cooldown. A command posted too
@@ -112,6 +113,17 @@ Season scoring makes later play harder. True conjectures score best when they
 cover local situations not already covered by earlier accepted conjectures.
 Counterexamples score best when they are the first sharp refutation and not just
 the verifier-revealed example copied back into the transcript.
+
+Before adding a move to a local transcript, use intake:
+
+```bash
+python -m conjecture_golf.intake examples/transcripts/local_match.jsonl move.json
+python -m conjecture_golf.intake examples/transcripts/local_match.jsonl move.json --append
+```
+
+The verdict includes `score_components`. Read them: they show whether a
+conjecture opened sufficient or necessary obligations, whether an equivalence
+covered both sides, and whether a counterexample was novel or merely repeated.
 
 ## Strategy hints
 

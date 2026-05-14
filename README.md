@@ -154,6 +154,11 @@ the arena becomes harder as transcripts accumulate.
 python -m conjecture_golf.replay examples/transcripts/basic.jsonl --season-scoring
 ```
 
+Season verdicts include structured `score_components` so agents can inspect why
+a move scored: law base, novelty, sufficient/necessary obligation split,
+complexity penalty, counterexample originality, and duplicate/revealed-witness
+discounts.
+
 Transcripts may include public metadata such as `_meta.created_at`. If a public
 arena needs pacing, replay can enforce a deterministic per-player cooldown:
 
@@ -171,6 +176,31 @@ python -m conjecture_golf.tournament --rounds 3 --out examples/transcripts/local
 python -m conjecture_golf.replay examples/transcripts/local_match.jsonl --season-scoring
 ```
 
+## Validate a local move
+
+For closed local tests, validate one candidate move against the current public
+transcript before appending it:
+
+```bash
+python -m conjecture_golf.intake examples/transcripts/local_match.jsonl move.json
+python -m conjecture_golf.intake examples/transcripts/local_match.jsonl move.json --append
+```
+
+The intake path parses JSON as data, replays the transcript, prints the verdict,
+and appends only moves not rejected as invalid when `--append` is provided.
+
+## Render an obligation frontier
+
+The frontier report shows aggregate Season 0 coverage without revealing local
+solution IDs:
+
+```bash
+python -m conjecture_golf.frontier examples/transcripts/basic.jsonl
+python -m conjecture_golf.frontier examples/transcripts/basic.jsonl --json
+```
+
+Use it to see which claim kind and before/after transitions remain open.
+
 ## Render an observer report
 
 Observer reports are deterministic commentary generated from public transcripts.
@@ -179,6 +209,19 @@ They are for humans and AI commentators; the verifier remains the judge.
 ```bash
 python -m conjecture_golf.observer_report examples/transcripts/basic.jsonl --season-scoring
 python -m conjecture_golf.observer_report examples/transcripts/basic.jsonl --season-scoring --format html > observer.html
+```
+
+Reports include a newspaper-style summary: final leader, best law, best
+equivalence, sharpest counterexample, biggest failed conjecture, most stale move,
+and open frontier headline.
+
+## Generate a closed match pack
+
+A match pack bundles the current transcript, guides, summaries, observer report,
+frontier report, and submission templates for local AI participants:
+
+```bash
+python -m conjecture_golf.match_pack examples/transcripts/basic.jsonl --out /tmp/conjecture-golf-pack
 ```
 
 ## Render a leaderboard from transcripts
@@ -237,4 +280,5 @@ The game is self-judging because:
 - The world and DSL are intentionally tiny.
 - The scoring system is deliberately simple.
 
-The next good step is to ask Codex to harden Issue replay and improve the workflow tests without changing the verifier philosophy.
+The next good step is to run a closed local Season 0 with several AI agents,
+compare their match-pack reports, and tune scoring only from transcript evidence.
