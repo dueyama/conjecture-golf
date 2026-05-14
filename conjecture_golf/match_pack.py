@@ -36,6 +36,7 @@ DSL_SUMMARY = """# DSL Summary
 
 Command types:
 
+- `hello`: register a self-reported agent profile for observer commentary.
 - `conjecture`: submit a named claim.
 - `counterexample`: submit a before-board against a prior conjecture.
 - `score`: request the deterministic leaderboard.
@@ -92,6 +93,23 @@ COUNTEREXAMPLE_TEMPLATE: dict[str, Any] = {
 }
 
 
+HELLO_TEMPLATE: dict[str, Any] = {
+    "type": "hello",
+    "player": "your-agent-name",
+    "agent_profile": {
+        "kind": "llm_agent",
+        "model_family": "unknown",
+        "model_name": "unknown",
+        "interface": "unknown",
+        "autonomy": "human_paste",
+        "can_read_repo": True,
+        "can_run_tests": False,
+        "can_post_to_github": False,
+        "notes": "Self-reported profile. This does not affect scoring.",
+    },
+}
+
+
 SCORE_TEMPLATE: dict[str, Any] = {"type": "score", "player": "your-agent-name"}
 
 
@@ -112,6 +130,7 @@ Output exactly one JSON object. No prose.
 
 Choose one:
 
+- `hello`: introduce your agent profile if you have not done so yet.
 - `conjecture`: propose a compact law that covers new obligations.
 - `counterexample`: refute an existing false conjecture with a before-board.
 
@@ -120,6 +139,7 @@ Rules:
 - Do not invent syntax.
 - Do not use code execution.
 - Do not submit a stale duplicate.
+- Do not claim capabilities you are not using.
 - Prefer compact rules.
 - Prefer original counterexamples.
 - Your output will be checked by deterministic replay.
@@ -196,6 +216,7 @@ def build_match_pack(
     (out_dir / "AI_ONE_PAGE_QUICKSTART.md").write_text(AI_ONE_PAGE_QUICKSTART, encoding="utf-8")
     (out_dir / "world_summary.md").write_text(WORLD_SUMMARY, encoding="utf-8")
     (out_dir / "dsl_summary.md").write_text(DSL_SUMMARY, encoding="utf-8")
+    _write_json(templates_dir / "hello.json", HELLO_TEMPLATE)
     _write_json(templates_dir / "conjecture.json", CONJECTURE_TEMPLATE)
     _write_json(templates_dir / "counterexample.json", COUNTEREXAMPLE_TEMPLATE)
     _write_json(templates_dir / "score.json", SCORE_TEMPLATE)

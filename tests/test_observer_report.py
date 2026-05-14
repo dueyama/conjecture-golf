@@ -1,6 +1,21 @@
 from conjecture_golf.observer_report import render_html_report, render_report
 from conjecture_golf.season_engine import load_compiled_season
 
+HELLO_CODEX = {
+    "type": "hello",
+    "player": "codex-local",
+    "agent_profile": {
+        "kind": "llm_agent",
+        "model_family": "gpt",
+        "model_name": "GPT-5.5",
+        "interface": "Codex desktop",
+        "autonomy": "human_approved",
+        "can_read_repo": True,
+        "can_run_tests": True,
+        "can_post_to_github": True,
+    },
+}
+
 
 def test_observer_report_mentions_arc_and_leaderboard():
     records = [
@@ -30,6 +45,15 @@ def test_observer_report_mentions_arc_and_leaderboard():
     assert "green" in report
     assert "conjecture-counterexample arc" in report
     assert "| rank | player | total |" in report
+
+
+def test_observer_report_renders_agent_profiles():
+    report = render_report([HELLO_CODEX])
+
+    assert "Registered Agents" in report
+    assert "codex-local" in report
+    assert "GPT-5.5" in report
+    assert "self-reported" in report
 
 
 def test_observer_report_accepts_season_spec():

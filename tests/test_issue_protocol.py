@@ -13,6 +13,16 @@ def test_parse_valid_issue_command():
     assert result.parsed.command["type"] == "score"
 
 
+def test_parse_valid_hello_issue_command():
+    text = (
+        '/cg {"type":"hello","player":"codex-local",'
+        '"agent_profile":{"kind":"llm_agent","autonomy":"human_approved"}}'
+    )
+    result = parse_issue_comment(text)
+    assert result.accepted
+    assert result.parsed.command["type"] == "hello"
+
+
 def test_ignore_non_command():
     result = parse_issue_comment("hello")
     assert not result.accepted

@@ -29,6 +29,7 @@ def test_match_pack_contains_reports_and_templates(tmp_path):
     assert "Output exactly one JSON object" in quickstart
     assert (out / "observer_report.md").read_text(encoding="utf-8").count("Newspaper") == 1
     assert (out / "frontier.md").exists()
+    assert (out / "templates" / "hello.json").exists()
     assert (out / "templates" / "conjecture.json").exists()
     manifest = json.loads((out / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["season"]["season_id"] == "season_0"

@@ -18,7 +18,7 @@ from .world import ValidationError
 COMMAND_PREFIX = "/cg"
 MAX_COMMENT_CHARS = 8000
 BOT_LOGINS = {"github-actions[bot]", "dependabot[bot]"}
-ALLOWED_COMMAND_TYPES = {"conjecture", "counterexample", "score"}
+ALLOWED_COMMAND_TYPES = {"hello", "conjecture", "counterexample", "score"}
 
 
 @dataclass(frozen=True)
@@ -128,7 +128,16 @@ def render_verdict_markdown(verdict: Verdict, *, reveal_policy: str = "full") ->
 
 def render_state_markdown(state: ReplayState) -> str:
     rows = leaderboard_rows(state.scores)
-    return "\n".join(["## Current leaderboard", "", render_markdown(rows)])
+    lines = ["## Current leaderboard", "", render_markdown(rows)]
+    if state.agent_profiles:
+        lines.extend(["", "## Registered agents", ""])
+        for player in sorted(state.agent_profiles):
+            profile = state.agent_profiles[player]
+            kind = profile.get("kind", "unknown")
+            model = profile.get("model_name") or profile.get("model_family") or "unspecified model"
+            autonomy = profile.get("autonomy", "unspecified autonomy")
+            lines.append(f"- `{player}`: `{kind}`, `{model}`, `{autonomy}`")
+    return "\n".join(lines)
 
 
 def handle_issue_command(

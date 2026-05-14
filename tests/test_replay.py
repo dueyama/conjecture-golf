@@ -25,6 +25,22 @@ STONE_EQUIVALENCE = {
     "then": {"target_becomes": "S"},
 }
 
+HELLO_CODEX = {
+    "type": "hello",
+    "player": "codex-local",
+    "agent_profile": {
+        "kind": "llm_agent",
+        "model_family": "gpt",
+        "model_name": "GPT-5.5",
+        "interface": "Codex desktop",
+        "autonomy": "human_approved",
+        "can_read_repo": True,
+        "can_run_tests": True,
+        "can_post_to_github": True,
+        "notes": "Posted through the operator account.",
+    },
+}
+
 
 def test_replay_basic_transcript_is_deterministic():
     a = replay_file("examples/transcripts/basic.jsonl")
@@ -56,6 +72,40 @@ def test_invalid_command_penalty():
     verdict = apply_command(state, {"type": "counterexample", "player": "bad", "against": "missing", "before": ["....."]})
     assert not verdict.ok
     assert state.scores["bad"].invalid_moves == 1
+
+
+def test_hello_registers_agent_profile_without_scoring_points():
+    state = replay_records([HELLO_CODEX, {"type": "score", "player": "observer"}])
+
+    assert state.verdicts[0].ok
+    assert state.verdicts[0].kind == "hello"
+    assert state.verdicts[0].score_delta == 0
+    assert state.agent_profiles["codex-local"]["model_name"] == "GPT-5.5"
+    assert state.scores["codex-local"].total == 0
+    assert state.verdicts[1].details["agent_profiles"]["codex-local"]["kind"] == "llm_agent"
+
+
+def test_hello_rejects_unknown_profile_fields():
+    bad = {
+        **HELLO_CODEX,
+        "agent_profile": {**HELLO_CODEX["agent_profile"], "claimed_rating": "superhuman"},
+    }
+
+    state = replay_records([bad])
+
+    assert not state.verdicts[0].ok
+    assert state.verdicts[0].kind == "invalid"
+    assert "unknown agent_profile fields" in state.verdicts[0].message
+    assert state.agent_profiles == {}
+
+
+def test_hello_rejects_unknown_top_level_fields():
+    bad = {**HELLO_CODEX, "score_hint": 999}
+
+    state = replay_records([bad])
+
+    assert not state.verdicts[0].ok
+    assert "unknown hello fields" in state.verdicts[0].message
 
 
 def test_player_cooldown_rejects_fast_repeat_commands():

@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
+from .agent_profile import validate_hello_command
 from .dsl import player_name_from_submission, validate_conjecture
 from .canonical import witness_id
 from .obligations import ObligationLedger, obligation_ids_for_conjecture, summarize_obligation_ids
@@ -28,6 +29,7 @@ class ReplayState:
     conjectures: dict[str, dict[str, Any]] = field(default_factory=dict)
     scores: dict[str, PlayerScore] = field(default_factory=dict)
     verdicts: list[Verdict] = field(default_factory=list)
+    agent_profiles: dict[str, dict[str, Any]] = field(default_factory=dict)
     last_command_at_by_player: dict[str, datetime] = field(default_factory=dict)
     obligation_ledger: ObligationLedger = field(default_factory=ObligationLedger)
     conjecture_signatures: set[str] = field(default_factory=set)
@@ -46,8 +48,8 @@ def normalize_command(record: Mapping[str, Any]) -> dict[str, Any]:
     if not isinstance(record, Mapping):
         raise ValidationError("transcript record must be an object")
     command_type = record.get("type")
-    if command_type not in {"conjecture", "counterexample", "score", "invalid"}:
-        raise ValidationError("record type must be conjecture, counterexample, score, or invalid")
+    if command_type not in {"hello", "conjecture", "counterexample", "score", "invalid"}:
+        raise ValidationError("record type must be hello, conjecture, counterexample, score, or invalid")
     return dict(record)
 
 
@@ -485,6 +487,19 @@ def apply_command(
         command = _strip_transcript_metadata(command)
         command_type = command["type"]
 
+        if command_type == "hello":
+            hello = validate_hello_command(command)
+            state.agent_profiles[hello["player"]] = hello["agent_profile"]
+            verdict = Verdict(
+                ok=True,
+                kind="hello",
+                player=hello["player"],
+                message=f"Registered self-reported agent profile for {hello['player']!r}.",
+                score_delta=0,
+                details={"agent_profile": hello["agent_profile"]},
+            )
+            return _apply_verdict(state, hello, verdict, season_scoring=season_scoring, season=season)
+
         if command_type == "conjecture":
             if "conjecture" in command:
                 conjecture = dict(command["conjecture"])
@@ -527,7 +542,7 @@ def apply_command(
                 player=player_name_from_submission(command),
                 message="Scoreboard rendered.",
                 score_delta=0,
-                details={"leaderboard": rows},
+                details={"leaderboard": rows, "agent_profiles": dict(state.agent_profiles)},
             )
             return _apply_verdict(state, command, verdict, season_scoring=season_scoring, season=season)
 
@@ -620,7 +635,17 @@ def main(argv: list[str] | None = None) -> int:
     )
     rows = leaderboard_rows(state.scores)
     if args.json:
-        print(json.dumps({"leaderboard": rows, "verdicts": [v.to_dict() for v in state.verdicts]}, ensure_ascii=False, indent=2))
+        print(
+            json.dumps(
+                {
+                    "leaderboard": rows,
+                    "agent_profiles": state.agent_profiles,
+                    "verdicts": [v.to_dict() for v in state.verdicts],
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
     else:
         print(render_markdown(rows))
     return 0

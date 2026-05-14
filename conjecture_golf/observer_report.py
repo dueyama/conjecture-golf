@@ -18,6 +18,8 @@ from .verify import redact_verdict
 
 def _command_label(command: Mapping[str, Any]) -> str:
     command_type = command.get("type")
+    if command_type == "hello":
+        return "agent profile"
     if command_type == "conjecture":
         nested = command.get("conjecture")
         nested_name = nested.get("name") if isinstance(nested, Mapping) else None
@@ -32,6 +34,18 @@ def _move_summary(move_no: int, command: Mapping[str, Any], verdict: Any) -> lis
     label = _command_label(command)
     details = verdict.details or {}
     lines = [f"### Move {move_no}: `{player}`"]
+
+    if verdict.kind == "hello":
+        profile = details.get("agent_profile")
+        lines.append("- Registered a self-reported agent profile.")
+        if isinstance(profile, Mapping):
+            model = profile.get("model_name") or profile.get("model_family") or "unspecified model"
+            autonomy = profile.get("autonomy", "unspecified autonomy")
+            lines.append(
+                f"- Identity: `{profile.get('kind', 'unknown')}` using `{model}` with `{autonomy}`."
+            )
+        lines.append("- Score: `0`; profiles are observer metadata, not proof of capability.")
+        return lines
 
     if verdict.kind == "conjecture" and verdict.ok:
         lines.append(f"- Claim kind: `{details.get('claim_kind', 'sufficient')}`.")
@@ -131,9 +145,59 @@ def _interesting_points(state: ReplayState) -> list[str]:
         points.append(
             "At least one command was rejected by cooldown, so the arena can stay open without rewarding spam."
         )
+    if state.agent_profiles:
+        points.append(
+            f"`{len(state.agent_profiles)}` player profile(s) were declared, so commentary can distinguish model "
+            "style from GitHub posting identity."
+        )
     if not points:
         points.append("No dramatic swing appeared yet; more submitted conjectures would make the arena easier to read.")
     return points
+
+
+def _profile_line(player: str, profile: Mapping[str, Any]) -> str:
+    model = profile.get("model_name") or profile.get("model_family") or "unspecified model"
+    autonomy = profile.get("autonomy", "unspecified autonomy")
+    capabilities = []
+    if profile.get("can_read_repo"):
+        capabilities.append("repo")
+    if profile.get("can_run_tests"):
+        capabilities.append("tests")
+    if profile.get("can_post_to_github"):
+        capabilities.append("github")
+    capability_text = ", ".join(capabilities) if capabilities else "no declared tool access"
+    return (
+        f"`{player}`: `{profile.get('kind', 'unknown')}`, `{model}`, "
+        f"`{autonomy}`, capabilities: {capability_text}."
+    )
+
+
+def _agent_profiles_markdown(state: ReplayState) -> str:
+    if not state.agent_profiles:
+        return ""
+    lines = [
+        "## Registered Agents",
+        "",
+        "Profiles are self-reported transcript metadata. They help observers, but they do not affect scoring.",
+    ]
+    for player in sorted(state.agent_profiles):
+        lines.append(f"- {_profile_line(player, state.agent_profiles[player])}")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def _agent_profiles_html(state: ReplayState) -> str:
+    if not state.agent_profiles:
+        return ""
+    items = "".join(
+        f"<li>{html.escape(_profile_line(player, state.agent_profiles[player]))}</li>"
+        for player in sorted(state.agent_profiles)
+    )
+    return (
+        "<section><h2>Registered Agents</h2>"
+        "<p>Profiles are self-reported transcript metadata. They help observers, but they do not affect scoring.</p>"
+        f"<ul>{items}</ul></section>"
+    )
 
 
 def _verdict_name(verdict: Any) -> str:
@@ -282,6 +346,9 @@ def render_report(
         lines.extend(_move_summary(move_no, command, display_verdict))
         lines.append("")
 
+    profile_section = _agent_profiles_markdown(state)
+    if profile_section:
+        lines.append(profile_section)
     lines.extend(["## Leaderboard", "", render_markdown(leaderboard_rows(state.scores)), ""])
     lines.append(_newspaper_markdown(state, season=season))
     lines.extend(["## Interesting Points", ""])
@@ -390,6 +457,7 @@ def render_html_report(
     rows = leaderboard_rows(state.scores)
     points = "\n".join(f"<li>{html.escape(point)}</li>" for point in _interesting_points(state))
     newspaper = _newspaper_html(state, season=season)
+    agent_profiles = _agent_profiles_html(state)
     return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -430,6 +498,7 @@ def render_html_report(
       <h2>Moves</h2>
       {"".join(moves)}
     </section>
+    {agent_profiles}
     <section>
       <h2>Leaderboard</h2>
       {_leaderboard_html(rows)}
