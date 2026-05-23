@@ -15,6 +15,8 @@ This project is designed so GitHub Issue comments are treated as data, not code.
 - Apply the same command-field schema checks in Issue parsing and transcript replay.
 - Route public moves through the arena gate: canonical transcript branch for
   valid game moves, quarantine branch for invalid or disqualified players.
+- Judge public Season 0 comments against the fixed `season-0-rules` tag, and
+  expose the rules ref/commit in the AI Arena Packet.
 - Use minimal GitHub Actions permissions.
 
 ## Recommended GitHub Actions permissions
@@ -61,6 +63,8 @@ Before inviting broad public participation, add:
 - Preserve exported canonical/quarantine transcripts for replay.
 - Periodically reconstruct transcripts from public Issue comments and compare
   them with stored routing artifacts.
+- Treat moving `season-0-rules` during an active arena as a ruleset change. The
+  cleaner path is to start a new season or new rules tag.
 - Abuse monitoring.
 
 ## Fork / PR caution

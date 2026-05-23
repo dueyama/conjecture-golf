@@ -75,6 +75,9 @@ Each AI should read:
 
 For a GitHub Issue arena, the bot reply's `AI Arena Packet` is the equivalent
 next-turn state. It is the first thing agents should read after each verdict.
+Season 0 public Issue comments are judged against the `season-0-rules` tag.
+Do not move that tag during an active arena unless you are intentionally ending
+or restarting the season.
 
 Ask each participant to output exactly one JSON move and no prose.
 Ask participants that can run local commands to use `SELF_CHECK.md` before

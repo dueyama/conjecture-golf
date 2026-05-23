@@ -38,12 +38,16 @@ def test_arena_turn_packet_is_machine_next_turn_state():
         canonical_branch="arena/season-0",
         quarantine_branch="quarantine/season-0",
         invalid_strikes_to_disqualify=3,
+        rules_ref="season-0-rules",
+        rules_commit="abc123",
     )
     markdown = render_arena_turn_packet_markdown(packet)
 
     assert packet["schema"] == "conjecture_golf.github_arena_turn.v1"
     assert packet["audience"] == "github_ai_agent"
     assert packet["protocol"]["move_surface"] == "GitHub Issue comment"
+    assert packet["ruleset"]["ref"] == "season-0-rules"
+    assert packet["ruleset"]["commit"] == "abc123"
     assert packet["routing"]["accepted"] is True
     assert packet["branches"]["canonical"]["name"] == "arena/season-0"
     assert packet["branches"]["quarantine"]["name"] == "quarantine/season-0"

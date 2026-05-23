@@ -42,6 +42,8 @@ def build_arena_turn_packet(
     season_scoring: bool = True,
     season: CompiledSeason | None = None,
     candidate_limit: int = 10,
+    rules_ref: str | None = None,
+    rules_commit: str | None = None,
 ) -> dict[str, Any]:
     """Build the compact machine state posted after a GitHub Issue move."""
 
@@ -60,6 +62,12 @@ def build_arena_turn_packet(
             "move_surface": "GitHub Issue comment",
             "output_contract": "post exactly one /cg JSON object and no prose",
             "judge": "deterministic public verifier plus transcript replay",
+        },
+        "ruleset": {
+            "season_id": ai_state["season"]["id"],
+            "ref": rules_ref or "unlocked",
+            "commit": rules_commit or "unknown",
+            "policy": "Season judgments are valid for this rules ref and commit.",
         },
         "routing": {
             "accepted": decision.accepted,

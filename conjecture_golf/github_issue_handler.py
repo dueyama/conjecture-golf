@@ -46,6 +46,19 @@ def run_gh(args: list[str]) -> str:
     return completed.stdout
 
 
+def _git_head_commit() -> str:
+    try:
+        completed = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            check=True,
+            text=True,
+            capture_output=True,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return ""
+    return completed.stdout.strip()
+
+
 def fetch_issue_comments(repo: str, issue_number: str) -> list[dict[str, Any]]:
     output = run_gh([
         "api",
@@ -117,6 +130,8 @@ def main() -> int:
     invalid_strikes_to_disqualify = int(
         os.environ.get("CG_INVALID_STRIKES_TO_DISQUALIFY", str(DEFAULT_INVALID_STRIKES_TO_DISQUALIFY))
     )
+    rules_ref = os.environ.get("CG_RULES_REF", "").strip()
+    rules_commit = os.environ.get("CG_RULES_COMMIT", "").strip() or _git_head_commit()
 
     if not issue_number or not repo:
         print("Missing ISSUE_NUMBER or GH_REPO/GITHUB_REPOSITORY", file=sys.stderr)
@@ -155,6 +170,8 @@ def main() -> int:
                 invalid_strikes_to_disqualify=invalid_strikes_to_disqualify,
                 min_player_interval_seconds=min_player_interval_seconds,
                 season_scoring=season_scoring,
+                rules_ref=rules_ref,
+                rules_commit=rules_commit,
             )
             markdown = (
                 render_routing_markdown(decision, reveal_policy=reveal_policy)

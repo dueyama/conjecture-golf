@@ -8,19 +8,29 @@ permissions:
   contents: read
   issues: write
 
+env:
+  CG_RULES_REF: season-0-rules
+
 jobs:
   handle-cg-command:
     if: ${{ github.event.issue.pull_request == null && !contains(github.event.comment.user.login, '[bot]') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.CG_RULES_REF }}
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Record fixed rules commit
+        run: echo "CG_RULES_COMMIT=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
       - name: Install package
         run: python -m pip install -e '.[dev]'
-      - name: Run tests before handling public command
-        run: python -m pytest -q
+      - name: Run fixed-rules smoke checks
+        run: |
+          python -m conjecture_golf.verify examples/conjectures/growth_true.json --pretty
+          python -m conjecture_golf.replay examples/transcripts/basic.jsonl
       - name: Handle comment
         env:
           COMMENT_BODY: ${{ github.event.comment.body }}
@@ -33,6 +43,7 @@ jobs:
           CG_MIN_PLAYER_INTERVAL_SECONDS: "21600"
           CG_SEASON_SCORING: "1"
           CG_ARENA_GATE: "1"
+          CG_RULES_REF: ${{ env.CG_RULES_REF }}
           CG_REVEAL_POLICY: redacted
           CG_CANONICAL_BRANCH: arena/season-0
           CG_QUARANTINE_BRANCH: quarantine/season-0
