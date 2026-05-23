@@ -45,6 +45,10 @@ def test_observer_report_mentions_arc_and_leaderboard():
     assert "green" in report
     assert "conjecture-counterexample arc" in report
     assert "| rank | player | total |" in report
+    assert "Turning point" in report
+    assert "Style Notes" in report
+    assert "aggressive generalizer" in report
+    assert "refuter" in report
 
 
 def test_observer_report_renders_agent_profiles():
@@ -129,3 +133,4 @@ def test_html_observer_report_renders_counterexample_boards():
     assert 'class="board"' in html
     assert "symbol-F" in html
     assert "Leaderboard" in html
+    assert "Match story" in html

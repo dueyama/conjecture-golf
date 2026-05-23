@@ -11,16 +11,32 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from .replay import ReplayState
-from .verify import verify_conjecture
+from .verify import check_counterexample, verify_conjecture
 
 Command = dict[str, Any]
 
 SYMBOLS = [".", "F", "W", "S"]
 RELATIONS = ["orthogonal", "diagonal", "king"]
+ORIGINAL_COUNTEREXAMPLE_BOARDS = [
+    [".W...", ".....", ".SF..", ".....", "....."],
+    [".....", ".W...", "..F..", ".S...", "....."],
+]
 
 
 def available_agents() -> tuple[str, ...]:
-    return ("rule", "characterizer", "greedy", "counterexample", "random", "copycat", "narrow_spam")
+    return (
+        "rule",
+        "frontier",
+        "characterizer",
+        "greedy",
+        "counterexample",
+        "original_refuter",
+        "minimalist",
+        "random",
+        "noise",
+        "copycat",
+        "narrow_spam",
+    )
 
 
 def _known_against(commands: Sequence[Mapping[str, Any]]) -> set[str]:
@@ -140,12 +156,61 @@ def characterizer_agent_command(player: str, turn_index: int) -> Command:
     return {"type": "score", "player": player}
 
 
+def frontier_agent_command(player: str, turn_index: int) -> Command:
+    commands: list[Command] = [
+        {
+            "type": "conjecture",
+            "player": player,
+            "name": "frontier_water_survives_with_empty_neighbor",
+            "if": [
+                {"target_is": "W"},
+                {"exists": {"symbol": ".", "relation": "orthogonal"}},
+            ],
+            "then": {"target_becomes": "W"},
+        },
+        {
+            "type": "conjecture",
+            "player": player,
+            "name": "frontier_flower_survives_without_stone",
+            "if": [
+                {"target_is": "F"},
+                {"not_exists": {"symbol": "S", "relation": "king"}},
+            ],
+            "then": {"target_becomes": "F"},
+        },
+        {
+            "type": "conjecture",
+            "player": player,
+            "name": "frontier_water_spread_no_diagonal_water_or_stone",
+            "if": [
+                {"target_is": "."},
+                {"count_exactly": {"symbol": "W", "relation": "orthogonal", "n": 2}},
+                {"not_exists": {"symbol": "S", "relation": "diagonal"}},
+                {"not_exists": {"symbol": "W", "relation": "diagonal"}},
+            ],
+            "then": {"target_becomes": "W"},
+        },
+    ]
+    if turn_index < len(commands):
+        return commands[turn_index]
+    return {"type": "score", "player": player}
+
+
 def counterexample_agent_command(
     player: str,
     state: ReplayState,
     prior_commands: Sequence[Mapping[str, Any]],
 ) -> Command:
     already_countered = _known_against(prior_commands)
+    for name, before in state.auto_counterexamples.items():
+        if name in already_countered:
+            continue
+        return {
+            "type": "counterexample",
+            "player": player,
+            "against": name,
+            "before": list(before),
+        }
     for name, conjecture in state.conjectures.items():
         if name in already_countered:
             continue
@@ -162,6 +227,67 @@ def counterexample_agent_command(
                     "before": before,
                 }
     return {"type": "score", "player": player}
+
+
+def original_refuter_agent_command(
+    player: str,
+    state: ReplayState,
+    prior_commands: Sequence[Mapping[str, Any]],
+) -> Command:
+    already_countered = _known_against(prior_commands)
+    for name, conjecture in state.conjectures.items():
+        if name in already_countered:
+            continue
+        revealed = state.auto_counterexamples.get(name)
+        for before in ORIGINAL_COUNTEREXAMPLE_BOARDS:
+            if tuple(before) == revealed:
+                continue
+            verdict = check_counterexample(dict(conjecture), before)
+            if verdict.ok:
+                return {
+                    "type": "counterexample",
+                    "player": player,
+                    "against": name,
+                    "before": before,
+                }
+    return {"type": "score", "player": player}
+
+
+def minimalist_agent_command(
+    player: str,
+    state: ReplayState,
+    prior_commands: Sequence[Mapping[str, Any]],
+) -> Command:
+    already_countered = _known_against(prior_commands)
+    candidates: list[tuple[int, str, list[str]]] = []
+    for name, before in state.auto_counterexamples.items():
+        if name in already_countered:
+            continue
+        board = list(before)
+        occupied = sum(ch != "." for row in board for ch in row)
+        candidates.append((occupied, name, board))
+    for name, conjecture in state.conjectures.items():
+        if name in already_countered or name in state.auto_counterexamples:
+            continue
+        verdict = verify_conjecture(conjecture)
+        details = verdict.details or {}
+        counterexample = details.get("counterexample")
+        if verdict.ok or not isinstance(counterexample, Mapping):
+            continue
+        before = counterexample.get("board")
+        if isinstance(before, list) and all(isinstance(row, str) for row in before):
+            occupied = sum(ch != "." for row in before for ch in row)
+            candidates.append((occupied, name, list(before)))
+    if not candidates:
+        return {"type": "score", "player": player}
+
+    occupied, name, before = sorted(candidates, key=lambda item: (item[0], item[1]))[0]
+    return {
+        "type": "counterexample",
+        "player": player,
+        "against": name,
+        "before": before,
+    }
 
 
 def copycat_agent_command(player: str, prior_commands: Sequence[Mapping[str, Any]], turn_index: int) -> Command:
@@ -221,6 +347,15 @@ def random_agent_command(player: str, turn_index: int, seed: int) -> Command:
     }
 
 
+def noise_agent_command(player: str, turn_index: int) -> Command:
+    return {
+        "type": "score",
+        "player": player,
+        "bonus": 999,
+        "note": f"invalid public noise {turn_index}",
+    }
+
+
 def next_agent_command(
     agent_name: str,
     *,
@@ -232,16 +367,24 @@ def next_agent_command(
 ) -> Command:
     if agent_name == "rule":
         return rule_agent_command(player, turn_index)
+    if agent_name == "frontier":
+        return frontier_agent_command(player, turn_index)
     if agent_name == "characterizer":
         return characterizer_agent_command(player, turn_index)
     if agent_name == "greedy":
         return greedy_agent_command(player, turn_index)
     if agent_name == "counterexample":
         return counterexample_agent_command(player, state, prior_commands)
+    if agent_name == "original_refuter":
+        return original_refuter_agent_command(player, state, prior_commands)
+    if agent_name == "minimalist":
+        return minimalist_agent_command(player, state, prior_commands)
     if agent_name == "copycat":
         return copycat_agent_command(player, prior_commands, turn_index)
     if agent_name == "narrow_spam":
         return narrow_spam_agent_command(player, turn_index)
     if agent_name == "random":
         return random_agent_command(player, turn_index, seed)
+    if agent_name == "noise":
+        return noise_agent_command(player, turn_index)
     raise ValueError(f"unknown local agent: {agent_name}")

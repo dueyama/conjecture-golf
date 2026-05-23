@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping
 
 from .agent_profile import validate_hello_command
-from .dsl import player_name_from_submission, validate_conjecture
+from .dsl import ALLOWED_CONJECTURE_KEYS, player_name_from_submission, validate_conjecture
 from .canonical import witness_id
 from .obligations import ObligationLedger, obligation_ids_for_conjecture, summarize_obligation_ids
 from .score import PlayerScore, apply_verdict, leaderboard_rows, render_markdown
@@ -22,6 +22,13 @@ from .season_catalog import load_optional_compiled_season
 from .season_engine import CompiledSeason
 from .verify import Verdict, check_counterexample, verify_conjecture
 from .world import ValidationError
+
+ALLOWED_TRANSCRIPT_META_KEYS = {"source", "author_login", "created_at", "comment_id"}
+ALLOWED_COUNTEREXAMPLE_KEYS = {"type", "player", "against", "before", "board", "transition", "_meta"}
+ALLOWED_INVALID_KEYS = {"type", "player", "message", "reason", "_error", "_meta"}
+ALLOWED_SCORE_KEYS = {"type", "player", "_meta"}
+ALLOWED_NESTED_CONJECTURE_KEYS = {"type", "player", "conjecture", "_meta"}
+ALLOWED_FLAT_CONJECTURE_KEYS = {"type", "_meta"} | ALLOWED_CONJECTURE_KEYS
 
 
 @dataclass
@@ -47,10 +54,109 @@ class ReplayState:
 def normalize_command(record: Mapping[str, Any]) -> dict[str, Any]:
     if not isinstance(record, Mapping):
         raise ValidationError("transcript record must be an object")
+    _validate_transcript_metadata(record.get("_meta"))
     command_type = record.get("type")
     if command_type not in {"hello", "conjecture", "counterexample", "score", "invalid"}:
         raise ValidationError("record type must be hello, conjecture, counterexample, score, or invalid")
+    if command_type == "hello":
+        hello_command = _strip_transcript_metadata(record)
+        unknown = set(record) - {"type", "player", "agent_profile", "_meta"}
+        if unknown:
+            raise ValidationError(f"unknown hello fields: {sorted(unknown)}")
+        validate_hello_command(hello_command)
+    elif command_type == "conjecture":
+        _validate_conjecture_command_schema(record)
+    elif command_type == "counterexample":
+        _validate_counterexample_command_schema(record)
+    elif command_type == "score":
+        _validate_score_command_schema(record)
+    elif command_type == "invalid":
+        _validate_invalid_command_schema(record)
     return dict(record)
+
+
+def _validate_transcript_metadata(meta: Any) -> None:
+    if meta is None:
+        return
+    if not isinstance(meta, Mapping):
+        raise ValidationError("_meta must be an object")
+    unknown = set(meta) - ALLOWED_TRANSCRIPT_META_KEYS
+    if unknown:
+        raise ValidationError(f"unknown _meta fields: {sorted(unknown)}")
+    for key in ("source", "author_login", "created_at"):
+        if key in meta and not isinstance(meta[key], str):
+            raise ValidationError(f"_meta.{key} must be a string")
+    if "comment_id" in meta and not isinstance(meta["comment_id"], (int, str)):
+        raise ValidationError("_meta.comment_id must be an integer or string")
+
+
+def _validate_optional_player(command: Mapping[str, Any]) -> None:
+    if "player" not in command:
+        return
+    player = command["player"]
+    if not isinstance(player, str):
+        raise ValidationError("player must be a string")
+    cleaned = player.strip()
+    if not cleaned:
+        raise ValidationError("player must not be empty")
+    if len(cleaned) > 80:
+        raise ValidationError("player must be no longer than 80 chars")
+    if any(ord(ch) < 32 for ch in cleaned):
+        raise ValidationError("player must not contain control characters")
+
+
+def _validate_conjecture_command_schema(command: Mapping[str, Any]) -> None:
+    if "conjecture" in command:
+        unknown = set(command) - ALLOWED_NESTED_CONJECTURE_KEYS
+        if unknown:
+            raise ValidationError(f"unknown conjecture command fields: {sorted(unknown)}")
+        _validate_optional_player(command)
+        if not isinstance(command["conjecture"], Mapping):
+            raise ValidationError("conjecture command field must be an object")
+        return
+    unknown = set(command) - ALLOWED_FLAT_CONJECTURE_KEYS
+    if unknown:
+        raise ValidationError(f"unknown conjecture command fields: {sorted(unknown)}")
+    _validate_optional_player(command)
+
+
+def _validate_counterexample_command_schema(command: Mapping[str, Any]) -> None:
+    unknown = set(command) - ALLOWED_COUNTEREXAMPLE_KEYS
+    if unknown:
+        raise ValidationError(f"unknown counterexample command fields: {sorted(unknown)}")
+    _validate_optional_player(command)
+    against = command.get("against")
+    if not isinstance(against, str) or not against.strip():
+        raise ValidationError("counterexample needs non-empty 'against'")
+    board_sources = [key for key in ("before", "board") if key in command]
+    if "transition" in command:
+        transition = command["transition"]
+        if not isinstance(transition, Mapping):
+            raise ValidationError("counterexample transition must be an object")
+        unknown_transition = set(transition) - {"before"}
+        if unknown_transition:
+            raise ValidationError(f"unknown counterexample transition fields: {sorted(unknown_transition)}")
+        if "before" in transition:
+            board_sources.append("transition.before")
+    if len(board_sources) != 1:
+        raise ValidationError("counterexample must provide exactly one of before, board, or transition.before")
+
+
+def _validate_score_command_schema(command: Mapping[str, Any]) -> None:
+    unknown = set(command) - ALLOWED_SCORE_KEYS
+    if unknown:
+        raise ValidationError(f"unknown score command fields: {sorted(unknown)}")
+    _validate_optional_player(command)
+
+
+def _validate_invalid_command_schema(command: Mapping[str, Any]) -> None:
+    unknown = set(command) - ALLOWED_INVALID_KEYS
+    if unknown:
+        raise ValidationError(f"unknown invalid command fields: {sorted(unknown)}")
+    _validate_optional_player(command)
+    for key in ("message", "reason", "_error"):
+        if key in command and not isinstance(command[key], str):
+            raise ValidationError(f"{key} must be a string")
 
 
 def _canonical_json(value: Any) -> str:

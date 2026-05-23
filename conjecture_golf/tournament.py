@@ -76,7 +76,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--raw-scoring", action="store_true", help="Disable season novelty scoring.")
     args = parser.parse_args(argv)
 
-    agent_names = args.agents or ["rule", "characterizer", "greedy", "counterexample", "random"]
+    agent_names = args.agents or ["rule", "frontier", "characterizer", "greedy", "minimalist", "random"]
     result = run_tournament(agent_names, rounds=args.rounds, seed=args.seed, season_scoring=not args.raw_scoring)
 
     if args.out:

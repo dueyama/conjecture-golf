@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from .frontier import build_frontier_report
-from .replay import iter_jsonl, replay_records
+from .replay import ReplayState, iter_jsonl, replay_records
 from .score import leaderboard_rows
 from .season_catalog import load_optional_compiled_season
 from .season_engine import CompiledSeason
@@ -32,6 +32,7 @@ class SeasonEvaluation:
     best_law: dict[str, Any] | None
     best_counterexample: dict[str, Any] | None
     strategic_styles: list[str]
+    style_notes_by_player: dict[str, list[str]]
     has_two_distinct_strategic_styles: bool
 
     def to_dict(self) -> dict[str, Any]:
@@ -50,6 +51,7 @@ class SeasonEvaluation:
             "best_law": self.best_law,
             "best_counterexample": self.best_counterexample,
             "strategic_styles": self.strategic_styles,
+            "style_notes_by_player": self.style_notes_by_player,
             "has_two_distinct_strategic_styles": self.has_two_distinct_strategic_styles,
         }
 
@@ -105,6 +107,73 @@ def _strategic_styles(verdicts: Iterable[Any]) -> list[str]:
     return sorted(styles)
 
 
+def style_notes_by_player(verdicts: Iterable[Any]) -> dict[str, list[str]]:
+    stats: dict[str, dict[str, int]] = {}
+    for verdict in verdicts:
+        player = verdict.player or "anonymous"
+        details = verdict.details or {}
+        player_stats = stats.setdefault(
+            player,
+            {
+                "accepted_laws": 0,
+                "necessary_or_equivalence": 0,
+                "new_obligations": 0,
+                "valid_counterexamples": 0,
+                "novel_counterexamples": 0,
+                "false_conjectures": 0,
+                "stale_or_duplicate": 0,
+                "invalid": 0,
+            },
+        )
+        basis = details.get("season_score_basis")
+        if verdict.kind == "conjecture" and verdict.ok:
+            player_stats["accepted_laws"] += 1
+            player_stats["new_obligations"] += int(details.get("season_new_obligations") or 0)
+            if details.get("claim_kind") in {"necessary", "equivalence"}:
+                player_stats["necessary_or_equivalence"] += 1
+        elif verdict.kind == "conjecture":
+            player_stats["false_conjectures"] += 1
+        if verdict.kind == "counterexample" and verdict.ok:
+            player_stats["valid_counterexamples"] += 1
+            if basis == "novel_first_counterexample":
+                player_stats["novel_counterexamples"] += 1
+        if verdict.kind == "invalid":
+            player_stats["invalid"] += 1
+        if basis in {"stale_true_conjecture", "already_countered", "duplicate_witness", "duplicate_conjecture"}:
+            player_stats["stale_or_duplicate"] += 1
+        if details.get("reason") == "duplicate_conjecture":
+            player_stats["stale_or_duplicate"] += 1
+
+    notes_by_player: dict[str, list[str]] = {}
+    for player in sorted(stats):
+        player_stats = stats[player]
+        notes: list[str] = []
+        if player_stats["new_obligations"] > 0:
+            notes.append(f"frontier opener: covered {player_stats['new_obligations']} new obligations")
+        if player_stats["necessary_or_equivalence"] > 0:
+            notes.append(
+                "characterizer: used "
+                f"{player_stats['necessary_or_equivalence']} necessary/equivalence claim(s)"
+            )
+        if player_stats["novel_counterexamples"] > 0:
+            notes.append(
+                "original refuter: found "
+                f"{player_stats['novel_counterexamples']} novel first counterexample(s)"
+            )
+        elif player_stats["valid_counterexamples"] > 0:
+            notes.append(f"refuter: found {player_stats['valid_counterexamples']} valid counterexample(s)")
+        if player_stats["false_conjectures"] > 0:
+            notes.append(f"aggressive generalizer: submitted {player_stats['false_conjectures']} refuted conjecture(s)")
+        if player_stats["stale_or_duplicate"] > 0:
+            notes.append(f"stale pressure: {player_stats['stale_or_duplicate']} stale or duplicate move(s)")
+        if player_stats["invalid"] > 0:
+            notes.append(f"protocol risk: {player_stats['invalid']} invalid move(s)")
+        if not notes:
+            notes.append("no scoring style detected yet")
+        notes_by_player[player] = notes
+    return notes_by_player
+
+
 def evaluate_records(
     records: Iterable[Mapping[str, Any]],
     *,
@@ -118,6 +187,14 @@ def evaluate_records(
         season_scoring=season_scoring,
         season=season,
     )
+    return evaluate_state(state, season=season)
+
+
+def evaluate_state(
+    state: ReplayState,
+    *,
+    season: CompiledSeason | None = None,
+) -> SeasonEvaluation:
     verdicts = state.verdicts
     rows = leaderboard_rows(state.scores)
     accepted_laws = [v for v in verdicts if v.kind == "conjecture" and v.ok]
@@ -128,6 +205,7 @@ def evaluate_records(
     score_values = [int(row["total"]) for row in rows]
     frontier = build_frontier_report(state, season=season)
     styles = _strategic_styles(verdicts)
+    style_notes = style_notes_by_player(verdicts)
 
     return SeasonEvaluation(
         season_id=season.spec.season_id if season else season_id(),
@@ -171,6 +249,7 @@ def evaluate_records(
         if accepted_counterexamples
         else None,
         strategic_styles=styles,
+        style_notes_by_player=style_notes,
         has_two_distinct_strategic_styles=len(styles) >= 2,
     )
 
@@ -223,6 +302,12 @@ def render_evaluation_markdown(evaluation: SeasonEvaluation) -> str:
     lines.extend(["", "## Strategic Styles", ""])
     if data["strategic_styles"]:
         lines.extend(f"- `{style}`" for style in data["strategic_styles"])
+    else:
+        lines.append("- none detected")
+    lines.extend(["", "## Player Style Notes", ""])
+    if data["style_notes_by_player"]:
+        for player, notes in data["style_notes_by_player"].items():
+            lines.append(f"- `{player}`: {'; '.join(notes)}.")
     else:
         lines.append("- none detected")
     lines.append("")

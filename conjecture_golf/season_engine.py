@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass
+from functools import cached_property
 from itertools import product
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
@@ -12,6 +13,15 @@ from .season_spec import SeasonSpec, TransitionRule, load_season_spec
 from .world import ValidationError, relation_offsets
 
 Board = list[str]
+
+
+@dataclass(frozen=True)
+class LocalCenterContext:
+    index: int
+    local: tuple[str, ...]
+    board: tuple[str, ...]
+    center_before: str
+    center_after: str
 
 
 @dataclass(frozen=True)
@@ -83,18 +93,21 @@ class CompiledSeason:
                 return rule
         return None
 
-    def next_symbol_for_cell(self, board: Sequence[str], row: int, col: int) -> str:
-        board = self.validate_board(list(board))
+    def _next_symbol_for_cell_unchecked(self, board: Sequence[str], row: int, col: int) -> str:
         rule = self.first_matching_rule(board, row, col)
         if rule is not None:
             return rule.becomes
         return board[row][col]
 
+    def next_symbol_for_cell(self, board: Sequence[str], row: int, col: int) -> str:
+        board = self.validate_board(list(board))
+        return self._next_symbol_for_cell_unchecked(board, row, col)
+
     def step_board(self, board: Sequence[str]) -> Board:
         board = self.validate_board(list(board))
         rows: list[str] = []
         for row in range(self.spec.height):
-            chars = [self.next_symbol_for_cell(board, row, col) for col in range(self.spec.width)]
+            chars = [self._next_symbol_for_cell_unchecked(board, row, col) for col in range(self.spec.width)]
             rows.append("".join(chars))
         return rows
 
@@ -114,6 +127,22 @@ class CompiledSeason:
         symbol_tuple = tuple(sorted(self.symbol_set))
         for chars in product(symbol_tuple, repeat=size * size):
             yield ["".join(chars[i * size : (i + 1) * size]) for i in range(size)]
+
+    @cached_property
+    def local_center_contexts(self) -> tuple[LocalCenterContext, ...]:
+        contexts: list[LocalCenterContext] = []
+        for index, local in enumerate(self.tiny_local_boards(size=3)):
+            board = tuple(local)
+            contexts.append(
+                LocalCenterContext(
+                    index=index,
+                    local=board,
+                    board=board,
+                    center_before=board[1][1],
+                    center_after=self._next_symbol_for_cell_unchecked(board, 1, 1),
+                )
+            )
+        return tuple(contexts)
 
     def validate_conjecture(self, conjecture: Any) -> dict[str, Any]:
         if not isinstance(conjecture, Mapping):

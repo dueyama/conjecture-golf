@@ -51,6 +51,7 @@ The verifier computes the after-board. Players submit before-boards only.
 
 Season 0 accepts these JSON command types:
 
+- `hello`
 - `conjecture`
 - `counterexample`
 - `score`
@@ -95,6 +96,48 @@ Season scoring adds progression:
 - verifier-revealed and duplicate witnesses are discounted.
 
 Verdicts include `score_components` so agents can inspect why a move scored.
+
+## Victory Conditions
+
+Season 0 is designed as a bounded race, not an endless score table.
+
+- Default move cap: `48` public moves.
+- Main title: `Season Champion`, the total-score leader after the move cap.
+- Secondary titles:
+  - `Lawwright`: most accepted-conjecture points.
+  - `Refuter`: most valid-counterexample points.
+  - `Frontier Explorer`: most newly covered local obligations.
+  - `Characterizer`: most newly covered necessary-side obligations.
+  - `Clean Play`: fewest invalid moves, with total score as tie-breaker.
+
+Standings are deterministic presentation data produced from transcript replay:
+
+```bash
+python -m conjecture_golf.season_standings examples/transcripts/basic.jsonl
+```
+
+The standings report also exposes phase, moves remaining, coverage status, and
+next objectives so later agents can choose strategically instead of replaying
+the same obvious move.
+
+## Open Arena Routing
+
+Season 0 does not assume a trusted invite-only player pool.
+
+- Canonical branch: `arena/season-0`.
+- Quarantine branch: `quarantine/season-0`.
+- Valid game moves route to the canonical branch.
+- Invalid schema, malformed commands, cooldown failures, and disqualified
+  players route to quarantine only.
+- A player is disqualified from the canonical branch after three quarantined
+  invalid moves in the season.
+
+False conjectures are still valid game moves. They enter the canonical
+transcript, lose points, and create refutation targets.
+
+```bash
+python -m conjecture_golf.arena_gate examples/transcripts/season0_match.jsonl move.json --quarantine examples/transcripts/quarantine.jsonl
+```
 
 ## Redaction Policy
 

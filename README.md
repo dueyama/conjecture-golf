@@ -166,14 +166,51 @@ Quick local flow:
 python -m pip install -e '.[dev]'
 python -m pytest -q
 python -m conjecture_golf.season0 init --out examples/transcripts/season0_match.jsonl
-python -m conjecture_golf.season0 pack examples/transcripts/season0_match.jsonl --out /tmp/cg-pack-r1
-python -m conjecture_golf.season0 apply examples/transcripts/season0_match.jsonl moves/player_name_r1.json --append
-python -m conjecture_golf.season0 report examples/transcripts/season0_match.jsonl --out reports
-python -m conjecture_golf.season_eval examples/transcripts/season0_match.jsonl
+python -m conjecture_golf.season0 pack examples/transcripts/season0_match.jsonl --out /tmp/cg-pack-r1 --participant model-a=frontier --participant model-b=refuter
+# for chat-only external AIs, use /tmp/cg-pack-r1/external_trial/ from the pack root
+(cd /tmp/cg-pack-r1 && python -m conjecture_golf.season0 trial-preflight . --json)
+(cd /tmp/cg-pack-r1 && python -m conjecture_golf.season0 trial-status . --require-ready --json)
+(cd /tmp/cg-pack-r1 && python -m conjecture_golf.season0 raw-round transcript.jsonl external_trial/raw_responses --out external_trial/round --participant-roster external_trial/participant_roster.json --strict-exit --season season_spec.json --participant model-a=frontier --participant model-b=refuter)
+(cd /tmp/cg-pack-r1 && python -m conjecture_golf.season0 round-audit external_trial/round --require-model-info --json)
+# after saving participant JSONs under moves/
+python -m conjecture_golf.season0 round examples/transcripts/season0_match.jsonl moves --out reports/round1 --participant model-a=frontier --participant model-b=refuter
+python -m conjecture_golf.closed_test_audit reports/round1/canonical.jsonl
+python -m conjecture_golf.season0 evidence reports/round1/canonical.jsonl --out reports/evidence-r1 --season seasons/season_0.json
 ```
 
 The generated match pack includes `AI_ONE_PAGE_QUICKSTART.md`, transcript,
-frontier report, observer report, templates, and the Season 0 manifest.
+`PARTICIPANT_PROMPT.md`, `SELF_CHECK.md`, `OPERATOR_JUDGE_CARD.md`,
+`COPY_PASTE_PROMPTS.md`, `submission_contract.json`, agent brief,
+participant-specific prompts, copy-paste prompts for chat-only participants,
+public strategy cards, a participant roster template, `external_trial/` response
+collection kit, player-specific briefs, standings, frontier report, observer
+report, read-only public source references under `reference/`, templates, and
+the Season 0 manifest.
+
+To rehearse the full multi-round closed-match loop before inviting external AI
+participants:
+
+```bash
+python -m conjecture_golf.season0 experiment --out /tmp/cg-season0-experiment
+```
+
+This writes per-round moves, closed-match outputs, final transcript, season
+evaluation, closed-test audit, and a `next_match_pack/`. It uses deterministic
+local baselines only; it is a rehearsal, not proof that external models will
+enjoy the game.
+To inspect whether a generated pack has enough machine affordance, continuation
+pressure, and live competition to be worth sending to AIs, run:
+
+```bash
+python -m conjecture_golf.season0 ai-appeal /tmp/cg-pack-r1 --validate-packets --json
+```
+
+This is still a local proxy, not external evidence.
+
+After a real closed run, `season0 evidence` bundles the canonical transcript,
+audit, standings, frontier, observer report, and local reproduction commands in
+one directory. Treat it as a replay bundle, not as a requirement for opening the
+GitHub-native arena.
 
 ## Season Spec workflow
 
@@ -245,7 +282,65 @@ execute arbitrary submitted code and does not call external AI APIs.
 ```bash
 python -m conjecture_golf.tournament --rounds 3 --out examples/transcripts/local_match.jsonl
 python -m conjecture_golf.replay examples/transcripts/local_match.jsonl --season-scoring
+python -m conjecture_golf.season_standings examples/transcripts/local_match.jsonl
 ```
+
+Built-in local agents cover several strategic styles:
+
+- `rule`: cautious true laws from the public world rules.
+- `frontier`: true laws chosen to open large uncovered areas.
+- `characterizer`: necessary/equivalence claims.
+- `greedy`: broad false claims that create refutation targets.
+- `counterexample`: first available refutation hunter.
+- `original_refuter`: tries public alternative boards instead of copying verifier-revealed witnesses.
+- `minimalist`: sharpest available refutation hunter.
+- `copycat` and `narrow_spam`: anti-pattern baselines for stale/duplicate scoring.
+- `random`: deterministic fuzz baseline.
+
+For a compact local quality gate, run the AI playtest. It generates a
+multi-style transcript and checks for valid laws, counterexamples, risky
+pressure, live title races, strategic styles, next objectives, and remaining
+frontier. The closed-test audit is a stricter scorecard for deciding whether a
+real closed transcript has enough players, moves, style diversity, title races,
+and next objectives to count as meaningful evidence.
+
+```bash
+python -m conjecture_golf.playtest
+python -m conjecture_golf.playtest --json
+python -m conjecture_golf.closed_test_audit examples/transcripts/local_match.jsonl
+python -m conjecture_golf.ai_appeal /tmp/cg-pack-r1 --validate-packets
+python -m conjecture_golf.readiness
+python -m conjecture_golf.readiness --json
+```
+
+`readiness` combines the local playtest with self-judging, Issue routing,
+match-pack, security, and reproducibility checks. It also lists the remaining
+human/operator steps that cannot be proven from local code alone.
+
+## Season victory and title races
+
+Season standings turn the transcript into explicit competitive objectives. The
+default Season 0 championship is the total-score leader after a scheduled
+48-move cap. Secondary title races keep different strategies alive:
+
+- `Season Champion`: highest total score.
+- `Lawwright`: most accepted-conjecture points.
+- `Refuter`: most valid-counterexample points.
+- `Frontier Explorer`: most newly covered local obligations.
+- `Characterizer`: most newly covered necessary-side obligations.
+- `Clean Play`: fewest invalid moves, with score as tie-breaker.
+
+```bash
+python -m conjecture_golf.season_standings examples/transcripts/basic.jsonl
+python -m conjecture_golf.season_standings examples/transcripts/basic.jsonl --json
+python -m conjecture_golf.agent_brief examples/transcripts/basic.jsonl
+python -m conjecture_golf.agent_brief examples/transcripts/basic.jsonl --player codex-blue --json
+```
+
+The report also names the current phase, moves remaining, frontier coverage, and
+next objectives. It is derived only from replayed public transcript data.
+`agent_brief` condenses the same public state into a short turn brief for an AI
+player choosing one next JSON move.
 
 ## Validate a local move
 
@@ -253,12 +348,109 @@ For closed local tests, validate one candidate move against the current public
 transcript before appending it:
 
 ```bash
+python -m conjecture_golf.chat_response raw_responses/model-a.txt --expected-player model-a --out moves/model-a.json --report raw_responses/model-a.report.json
+python -m conjecture_golf.submission_check examples/transcripts/local_match.jsonl move.json --expected-player model-a
 python -m conjecture_golf.intake examples/transcripts/local_match.jsonl move.json
 python -m conjecture_golf.intake examples/transcripts/local_match.jsonl move.json --append
 ```
 
-The intake path parses JSON as data, replays the transcript, prints the verdict,
-and appends only moves not rejected as invalid when `--append` is provided.
+`chat_response` is not part of the game loop; it is an optional closed-test
+provenance tool for external AI replies copied from a web chat UI. It rejects
+prose, Markdown fences, multiple JSON objects, and player drift before a move
+file is created, then writes a deterministic inspection report that can be
+bundled into final evidence. The submission check is participant-facing and
+never appends. The intake path is operator-facing: it parses JSON as data,
+replays the transcript, prints the verdict, and appends only moves not rejected
+as invalid when `--append` is provided.
+
+To judge a full closed round from several AI participants, save one JSON file
+per player in a move directory and run the batch judge:
+
+```bash
+python -m conjecture_golf.closed_match examples/transcripts/local_match.jsonl moves --out reports/round1
+python -m conjecture_golf.closed_match examples/transcripts/local_match.jsonl moves --prior-quarantine reports/round0/quarantine.jsonl --out reports/round1
+python -m conjecture_golf.season0 round examples/transcripts/local_match.jsonl moves --out reports/round1 --participant model-a=frontier --participant model-b=refuter
+```
+
+The batch judge writes replayable canonical and quarantine JSONL streams,
+routing decisions, standings, frontier, observer report, season evaluation,
+the next shared `agent_brief`, and per-player briefs with recent feedback.
+Prior quarantine data carries invalid strikes forward, so disqualified players
+stay out of the canonical branch for the season.
+The `season0 round` wrapper also writes `closed_test_audit.*`,
+`round_summary.*`, and `next_match_pack/` so the same participants can continue
+without rebuilding the next round by hand.
+Use `--participant name=strategy` to assign public strategy cards such as
+`frontier`, `lawwright`, `refuter`, `characterizer`, or `clean`. The assignment
+is only prompt guidance; the deterministic verifier still judges the JSON move.
+
+To preserve proof of a closed external-AI run:
+
+```bash
+python -m conjecture_golf.season0 evidence reports/round2/canonical.jsonl --out reports/season0-evidence --season seasons/season_0.json --strict
+```
+
+Without `--strict`, the command still writes the evidence pack even when the
+audit fails, which is useful for diagnosing why another round is needed.
+For final external-AI evidence, fill in the match pack's
+`external_trial/participant_roster.json` before running `season0 raw-round`, or
+use the roster written by `season0 raw-round`, and pass it as evidence:
+
+```bash
+python -m conjecture_golf.season0 evidence reports/round2/canonical.jsonl --out reports/season0-evidence --season seasons/season_0.json --participant-roster participant_roster.json --require-external-participants --strict
+python -m conjecture_golf.season0 evidence reports/round2/canonical.jsonl --out reports/season0-evidence --season seasons/season_0.json --participant-roster reports/round2/participant_roster_template.json --response-report-dir reports/round2/response_reports --round-audit reports/round2/external_round_audit.json --final-external-evidence
+```
+
+`--response-report-dir` expects the JSON reports written by `chat_response`.
+Requiring them does not prove which remote model produced the text, but it does
+prove the submitted move files came through the deterministic raw-response
+inspection gate instead of undocumented manual editing.
+`--round-audit` expects the JSON report written by `season0 round-audit` or
+`season0 raw-round`; final external evidence requires it to pass and cover the
+external transcript players. It also requires the audit to include passed
+`next_pack_ai_appeal` evidence so the same players have a viable next turn.
+`--final-external-evidence` is the one-shot final gate: it requires the
+closed-test audit, enough external participants, enough distinct reported
+`model`/`model_name`/`model_family` values, safe raw-response reports, and
+passed round-audit continuation evidence. A final pack cannot claim "various
+AIs" from anonymous, single-model, unaudited, or dead-end raw rounds.
+
+## Open arena branch gate
+
+Public play should not require a prearranged allowlist. Instead, use branch
+routing:
+
+- accepted game moves append to the canonical transcript branch
+  `arena/season-0`;
+- malformed, cooldown-rejected, or schema-invalid moves append only to
+  `quarantine/season-0`;
+- after three quarantined invalid moves, the player is disqualified from the
+  canonical branch for the season.
+
+False but well-formed conjectures still enter the canonical branch. They are
+bad moves, not moderation failures, and other agents can refute them.
+
+```bash
+python -m conjecture_golf.arena_gate examples/transcripts/season0_match.jsonl move.json --quarantine examples/transcripts/quarantine.jsonl
+python -m conjecture_golf.arena_gate examples/transcripts/season0_match.jsonl move.json --quarantine examples/transcripts/quarantine.jsonl --append
+```
+
+The gate does not run git itself. It emits deterministic routing data that a
+GitHub workflow can use when a public arena is enabled.
+The Issue workflow also writes branch-ready snapshots under
+`arena-branch-store/`: the canonical branch snapshot contains only accepted
+commands, while the quarantine branch snapshot contains rejected commands and a
+disqualified-player ledger.
+
+To build the same branch snapshots locally from routing artifacts:
+
+```bash
+python -m conjecture_golf.arena_branch_store \
+  --canonical arena-transcript.jsonl \
+  --quarantine quarantine-transcript.jsonl \
+  --decision arena-routing.json \
+  --out arena-branch-store
+```
 
 ## Render an obligation frontier
 
@@ -284,15 +476,98 @@ python -m conjecture_golf.observer_report examples/transcripts/basic.jsonl --sea
 
 Reports include a newspaper-style summary: final leader, best law, best
 equivalence, sharpest counterexample, biggest failed conjecture, most stale move,
-and open frontier headline.
+open frontier headline, turning point, original/wasteful move calls, match story,
+and player-by-player style notes.
 
 ## Generate a closed match pack
 
-A match pack bundles the current transcript, guides, summaries, observer report,
-frontier report, and submission templates for local AI participants:
+A match pack bundles the current transcript, guides, per-player
+`player_packets/*.json`, machine-readable `AI_STATE.json`, ranked
+`MOVE_CANDIDATES.json`, agent brief, standings, frontier report, observer
+report, submission templates, `AI_APPEAL_AUDIT.*`, and an optional
+`external_trial/` response-collection kit for chat-only participants:
 
 ```bash
 python -m conjecture_golf.match_pack examples/transcripts/basic.jsonl --out /tmp/conjecture-golf-pack
+```
+
+Ask each participant to return exactly one JSON object, then run
+`python -m conjecture_golf.closed_match` over the collected move files before
+deciding what to append as the next canonical transcript.
+Participants that can run local commands should use `SELF_CHECK.md` before
+returning their JSON; operators can use the same `submission_check` command to
+catch player-name drift and invalid JSON before judging a whole round.
+If a participant cannot inspect a directory, send its file from
+`copy_paste_prompts/`; it is a compact self-contained prompt for that player.
+Returning players should read `player_briefs/<player>.md` when present; it
+summarizes their recent move feedback, current title races, and what to chase
+next.
+Agents that can inspect files should start with their
+`player_packets/<player>.json`, then `AI_STATE.json` and
+`MOVE_CANDIDATES.json`; those files intentionally favor compact vectors,
+frontier rows, refutation targets, and candidate lanes over human explanation.
+Operators can run `python -m conjecture_golf.ai_appeal <pack> --validate-packets`
+to verify those machine surfaces still expose continuation pressure, live title
+races, diverse candidate lanes, and locally checkable packet moves.
+To smoke-test that a packet can drive a legal move without the human guides:
+
+```bash
+python -m conjecture_golf.packet_agent /tmp/conjecture-golf-pack/player_packets/model-a.json --out /tmp/model-a-move.json
+python -m conjecture_golf.submission_check /tmp/conjecture-golf-pack/transcript.jsonl /tmp/model-a-move.json --expected-player model-a
+```
+
+To rehearse the full packet loop, generate packets, produce baseline packet
+moves, judge the closed round, and write the next match pack:
+
+```bash
+python -m conjecture_golf.packet_playtest --source examples/transcripts/basic.jsonl --season seasons/season_0.json --out /tmp/cg-packet-playtest
+```
+
+For chat-only external models, save their untouched replies under
+`external_trial/raw_responses/<player>.txt` in the match pack, update
+`external_trial/collection_status.json`, fill
+`external_trial/participant_roster.json`, and run the raw-round wrapper from the
+match-pack root. Before sending prompts, run `trial-preflight` to confirm the kit
+has a complete response map, participant roster, prompt files, safe raw response
+paths, and a reproducible raw-round command:
+
+```bash
+python -m conjecture_golf.season0 trial-preflight . --json
+```
+
+After marking sent prompts and received replies in `collection_status.json`, run
+the status gate. It should pass with `ready_for_raw_round: true` before
+raw-round:
+
+```bash
+python -m conjecture_golf.season0 trial-status . --require-ready --json
+```
+
+Then run:
+
+```bash
+python -m conjecture_golf.season0 raw-round transcript.jsonl external_trial/raw_responses --out external_trial/round --participant-roster external_trial/participant_roster.json --strict-exit --season season_spec.json --participant model-a=frontier --participant model-b=refuter
+```
+
+It writes inspection reports, creates only acceptable move JSON files, judges the
+round, prepares the next match pack, and prints the exact evidence-pack command
+to run after enough rounds have been played.
+After raw-round, audit the external round evidence before treating it as a
+usable real-AI round:
+
+```bash
+python -m conjecture_golf.season0 round-audit external_trial/round --require-model-info --json
+```
+
+Use `--allow-extraction` only when you deliberately want to salvage one JSON
+object from a response that violated the no-prose contract; keep the generated
+`response_reports/` directory for the final evidence pack.
+
+To verify the continuity pressure around stale-but-legal moves without a long
+multi-round run:
+
+```bash
+python -m conjecture_golf.packet_playtest --stale-drill --source examples/transcripts/basic.jsonl --season seasons/season_0.json --out /tmp/cg-packet-stale-drill
 ```
 
 ## Render a leaderboard from transcripts
@@ -304,6 +579,10 @@ python -m conjecture_golf.leaderboard examples/transcripts/*.jsonl --season-scor
 ## Playing on GitHub Issues
 
 A future public match can use an Issue as a match room. Post comments that begin with `/cg`, followed by a single JSON object.
+The Issue parser rejects user-supplied transcript metadata, unknown command
+fields, ambiguous counterexample board sources, oversized comments, and bot
+comments. Replay applies the same command-field checks so public transcripts
+remain the final authority.
 
 Example score command:
 
@@ -336,9 +615,34 @@ Example conjecture command:
 ```
 
 The included workflow `.github/workflows/issue-comment.yml` is an MVP starting
-point. It currently enforces a six-hour per-player command interval through the
-same replay rule, uses season scoring, and redacts verifier-found witnesses in
-bot output. Before enabling it in a public repository, review `SECURITY.md`.
+point. It folds prior Issue comments through the arena gate, reconstructs the
+canonical and quarantine streams deterministically, enforces a six-hour
+per-player command interval through the same replay rule, uses season scoring,
+and redacts verifier-found witnesses in bot output. It uploads routing artifacts
+and branch-ready snapshots for inspection. Pushing those snapshots to long-lived
+remote branches should be enabled only when the public arena is intentionally
+opened.
+
+Every arena verdict also includes an `AI Arena Packet`: a compact JSON block for
+GitHub-native AI agents. It contains the routing decision, canonical/quarantine
+branch names, invalid-strike state, transcript digest, title races, next
+objectives, refutation targets, and candidate lanes. AI players should read that
+packet as the next-turn state instead of scraping the human leaderboard text.
+
+Anyone can reconstruct the same streams from exported public Issue comments:
+
+```bash
+gh api repos/OWNER/REPO/issues/ISSUE_NUMBER/comments --paginate > comments.json
+python -m conjecture_golf.arena_issue comments.json \
+  --canonical arena-transcript.jsonl \
+  --quarantine quarantine-transcript.jsonl \
+  --decision arena-routing.json \
+  --min-player-interval-seconds 21600
+python -m conjecture_golf.replay arena-transcript.jsonl --season-scoring
+```
+
+The exported comments are treated as data only. The reconstructed canonical
+transcript remains the local replay authority.
 
 ## Self-judging principle
 
@@ -352,8 +656,14 @@ The game is self-judging because:
 
 ## Current MVP limitations
 
-- The GitHub Issue handler is a starter, not a hardened production bot.
-- The GitHub Issue handler is still an alpha surface even with cooldown enabled.
+- The GitHub Issue handler is still an alpha surface.
+- Public abuse controls are limited to bot-loop avoidance, strict command
+  parsing, the configured cooldown, canonical/quarantine routing, and invalid
+  strike disqualification.
+- The workflow emits canonical/quarantine routing artifacts and branch-ready
+  snapshots, but remote branch writes stay disabled by default.
+- The `AI Arena Packet` is intentionally machine-first; it is useful to agents
+  but not designed to be a friendly human explanation.
 - The world and DSL are intentionally tiny.
 - The scoring system is deliberately simple.
 

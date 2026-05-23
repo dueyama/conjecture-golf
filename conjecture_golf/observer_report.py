@@ -13,6 +13,7 @@ from .score import leaderboard_rows, render_markdown
 from .season_catalog import load_optional_compiled_season
 from .season_engine import CompiledSeason
 from .season import season_id
+from .season_eval import style_notes_by_player
 from .verify import redact_verdict
 
 
@@ -208,8 +209,117 @@ def _verdict_name(verdict: Any) -> str:
     return str(verdict.kind)
 
 
+def _move_ref(indexed_verdict: tuple[int, Any] | None) -> str | None:
+    if indexed_verdict is None:
+        return None
+    move_no, verdict = indexed_verdict
+    player = verdict.player or "anonymous"
+    return f"Move {move_no}, `{player}`, `{_verdict_name(verdict)}`"
+
+
+def _turning_point(indexed_verdicts: list[tuple[int, Any]]) -> tuple[int, Any] | None:
+    candidates = [
+        item
+        for item in indexed_verdicts
+        if item[1].kind not in {"hello", "score"}
+    ]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda item: (abs(item[1].score_delta), item[1].score_delta, -item[0]))
+
+
+def _most_original_move(indexed_verdicts: list[tuple[int, Any]]) -> tuple[int, Any] | None:
+    law_candidates = [
+        item
+        for item in indexed_verdicts
+        if item[1].kind == "conjecture"
+        and item[1].ok
+        and int((item[1].details or {}).get("season_new_obligations") or 0) > 0
+    ]
+    if law_candidates:
+        return max(
+            law_candidates,
+            key=lambda item: (
+                int((item[1].details or {}).get("season_new_obligations") or 0),
+                item[1].score_delta,
+                -item[0],
+            ),
+        )
+    counterexamples = [
+        item
+        for item in indexed_verdicts
+        if item[1].kind == "counterexample"
+        and item[1].ok
+        and (item[1].details or {}).get("season_score_basis") == "novel_first_counterexample"
+    ]
+    if counterexamples:
+        return max(counterexamples, key=lambda item: (item[1].score_delta, -item[0]))
+    return None
+
+
+def _most_wasteful_move(indexed_verdicts: list[tuple[int, Any]]) -> tuple[int, Any] | None:
+    candidates = []
+    for item in indexed_verdicts:
+        verdict = item[1]
+        details = verdict.details or {}
+        basis = details.get("season_score_basis")
+        reason = details.get("reason")
+        if (
+            not verdict.ok
+            or basis in {"stale_true_conjecture", "already_countered", "duplicate_witness", "duplicate_conjecture"}
+            or reason == "duplicate_conjecture"
+        ):
+            candidates.append(item)
+    if not candidates:
+        return None
+    return max(
+        candidates,
+        key=lambda item: (
+            int((item[1].details or {}).get("season_known_obligations") or 0),
+            int((item[1].details or {}).get("season_potential_obligations") or 0),
+            abs(item[1].score_delta),
+            -item[0],
+        ),
+    )
+
+
+def _match_story(items: Mapping[str, Any]) -> str:
+    leader = items.get("leader")
+    best_law = items.get("best_law")
+    sharpest = items.get("sharpest_counterexample")
+    open_frontier = items.get("open_frontier") or []
+
+    if leader and best_law and sharpest:
+        if sharpest.player == leader["player"]:
+            return (
+                f"`{leader['player']}` leads by turning a weak broad claim into a strong refutation, "
+                f"while `{best_law.player}` opened fresh law territory."
+            )
+        return (
+            f"`{leader['player']}` leads, but `{sharpest.player}` kept broad claims risky while "
+            f"`{best_law.player}` opened fresh law territory."
+        )
+    if leader and best_law:
+        return (
+            f"`{leader['player']}` leads after accepted laws opened the season map; "
+            "the next player should target the remaining frontier."
+        )
+    if sharpest:
+        return (
+            f"`{sharpest.player}` made the clearest refutation, so weak broad claims are now visible targets."
+        )
+    if open_frontier:
+        first = open_frontier[0]
+        return (
+            f"The match is still open; `{first['claim_kind']} {first['transition']}` has "
+            f"`{first['count']}` uncovered obligations."
+        )
+    return "The transcript has not produced a decisive scoring story yet."
+
+
 def _newspaper_items(state: ReplayState, *, season: CompiledSeason | None = None) -> dict[str, Any]:
     rows = leaderboard_rows(state.scores)
+    indexed = list(enumerate(state.verdicts, start=1))
     accepted = [v for v in state.verdicts if v.kind == "conjecture" and v.ok]
     counterexamples = [v for v in state.verdicts if v.kind == "counterexample" and v.ok]
     failed = [v for v in state.verdicts if v.kind == "conjecture" and not v.ok]
@@ -223,7 +333,7 @@ def _newspaper_items(state: ReplayState, *, season: CompiledSeason | None = None
     equivalences = [v for v in accepted if (v.details or {}).get("claim_kind") == "equivalence"]
     frontier = build_frontier_report(state, season=season)
 
-    return {
+    items = {
         "leader": rows[0] if rows else None,
         "best_law": max(laws, key=lambda v: (v.score_delta, (v.details or {}).get("season_new_obligations", 0)), default=None),
         "best_equivalence": max(
@@ -247,7 +357,13 @@ def _newspaper_items(state: ReplayState, *, season: CompiledSeason | None = None
             default=None,
         ),
         "open_frontier": frontier.open_frontier[:3],
+        "turning_point": _turning_point(indexed),
+        "most_original_move": _most_original_move(indexed),
+        "most_wasteful_move": _most_wasteful_move(indexed),
+        "style_notes_by_player": style_notes_by_player(state.verdicts),
     }
+    items["match_story"] = _match_story(items)
+    return items
 
 
 def _newspaper_markdown(state: ReplayState, *, season: CompiledSeason | None = None) -> str:
@@ -309,6 +425,21 @@ def _newspaper_markdown(state: ReplayState, *, season: CompiledSeason | None = N
         lines.append(f"- Open frontier: {frontier}.")
     else:
         lines.append("- Open frontier: no uncovered obligations remain.")
+
+    turning_point = _move_ref(items["turning_point"])
+    lines.append(f"- Turning point: {turning_point}." if turning_point else "- Turning point: none yet.")
+
+    original = _move_ref(items["most_original_move"])
+    lines.append(f"- Most original move: {original}." if original else "- Most original move: none yet.")
+
+    wasteful = _move_ref(items["most_wasteful_move"])
+    lines.append(f"- Most wasteful move: {wasteful}." if wasteful else "- Most wasteful move: none yet.")
+
+    lines.append(f"- Match story: {items['match_story']}")
+    lines.append("")
+    lines.append("### Style Notes")
+    for player, notes in items["style_notes_by_player"].items():
+        lines.append(f"- `{player}`: {'; '.join(notes)}.")
     lines.append("")
     return "\n".join(lines)
 

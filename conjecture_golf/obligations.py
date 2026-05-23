@@ -6,6 +6,8 @@ scoring uses obligation IDs to reward new territory and discount stale claims.
 
 from __future__ import annotations
 
+import copy
+import json
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from functools import lru_cache
@@ -19,6 +21,9 @@ WORLD_VERSION = "season_0"
 CLAIM_KIND_SUFFICIENT = "sufficient"
 CLAIM_KIND_NECESSARY = "necessary"
 CLAIM_KINDS = (CLAIM_KIND_SUFFICIENT, CLAIM_KIND_NECESSARY)
+
+_SEASON_UNIVERSE_CACHE: dict[str, frozenset[str]] = {}
+_SEASON_CONJECTURE_OBLIGATION_CACHE: dict[tuple[str, str], frozenset[str]] = {}
 
 
 @dataclass(frozen=True)
@@ -112,6 +117,24 @@ def obligation_id(
     )
 
 
+def _canonical_json(value: Any) -> str:
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def _season_cache_key(season: CompiledSeason) -> str:
+    return _canonical_json(season.spec.raw)
+
+
+def _obligation_conjecture_key(conjecture: Mapping[str, Any]) -> str:
+    return _canonical_json(
+        {
+            "claim_kind": conjecture.get("claim_kind", CLAIM_KIND_SUFFICIENT),
+            "if": conjecture["if"],
+            "then": conjecture["then"],
+        }
+    )
+
+
 def parse_obligation_id(identifier: str) -> dict[str, Any]:
     parts = identifier.split(":")
     if len(parts) != 5:
@@ -156,25 +179,30 @@ def all_local_obligation_ids(*, world_version: str = WORLD_VERSION) -> frozenset
 
 
 def all_local_obligation_ids_for_season(season: CompiledSeason) -> frozenset[str]:
+    cache_key = _season_cache_key(season)
+    cached = _SEASON_UNIVERSE_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+
     obligations: set[str] = set()
-    for index, local in enumerate(season.tiny_local_boards(size=3)):
-        board = season.center_embed_3x3(local)
-        actual = season.next_symbol_for_cell(board, 2, 2)
-        before = board[2][2]
+    for context in season.local_center_contexts:
         for claim_kind in CLAIM_KINDS:
             obligations.add(
                 obligation_id(
                     world_version=season.spec.season_id,
-                    center_before_symbol=before,
-                    center_after_symbol=actual,
-                    local_neighborhood_index=index,
+                    center_before_symbol=context.center_before,
+                    center_after_symbol=context.center_after,
+                    local_neighborhood_index=context.index,
                     claim_kind=claim_kind,
                 )
             )
-    return frozenset(obligations)
+    result = frozenset(obligations)
+    _SEASON_UNIVERSE_CACHE[cache_key] = result
+    return result
 
 
-def summarize_obligation_ids(obligations: Iterable[str]) -> dict[str, Any]:
+@lru_cache(maxsize=32)
+def _summarize_obligation_frozenset(obligations: frozenset[str]) -> dict[str, Any]:
     by_claim_kind = {claim_kind: 0 for claim_kind in CLAIM_KINDS}
     by_transition: dict[str, int] = {}
     by_claim_and_transition: dict[str, int] = {}
@@ -196,6 +224,10 @@ def summarize_obligation_ids(obligations: Iterable[str]) -> dict[str, Any]:
     }
 
 
+def summarize_obligation_ids(obligations: Iterable[str]) -> dict[str, Any]:
+    return copy.deepcopy(_summarize_obligation_frozenset(frozenset(obligations)))
+
+
 def obligation_ids_for_conjecture(
     conjecture: Mapping[str, Any],
     *,
@@ -205,6 +237,13 @@ def obligation_ids_for_conjecture(
     if season is not None:
         return obligation_ids_for_conjecture_in_season(conjecture, season=season)
     normalized = validate_conjecture(conjecture)
+    cache_key = _obligation_conjecture_key(normalized)
+    return _obligation_ids_for_normalized_conjecture(cache_key, world_version)
+
+
+@lru_cache(maxsize=512)
+def _obligation_ids_for_normalized_conjecture(cache_key: str, world_version: str) -> frozenset[str]:
+    normalized = json.loads(cache_key)
     claim_kind = str(normalized.get("claim_kind", CLAIM_KIND_SUFFICIENT))
     expected = normalized["then"]["target_becomes"]
     obligations: set[str] = set()
@@ -242,21 +281,27 @@ def obligation_ids_for_conjecture_in_season(
     season: CompiledSeason,
 ) -> frozenset[str]:
     normalized = season.validate_conjecture(conjecture)
+    season_key = _season_cache_key(season)
+    conjecture_key = _obligation_conjecture_key(normalized)
+    cache_key = (season_key, conjecture_key)
+    cached = _SEASON_CONJECTURE_OBLIGATION_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+
     claim_kind = str(normalized.get("claim_kind", CLAIM_KIND_SUFFICIENT))
     expected = normalized["then"]["target_becomes"]
     obligations: set[str] = set()
-    for index, local in enumerate(season.tiny_local_boards(size=3)):
-        board = season.center_embed_3x3(local)
-        antecedent = season.evaluate_conditions(board, 2, 2, normalized["if"])
-        actual = season.next_symbol_for_cell(board, 2, 2)
-        target_produced = actual == expected
+    for context in season.local_center_contexts:
+        board = context.board
+        antecedent = season.evaluate_conditions(board, 1, 1, normalized["if"])
+        target_produced = context.center_after == expected
         if claim_kind in {"sufficient", "equivalence"} and antecedent:
             obligations.add(
                 obligation_id(
                     world_version=season.spec.season_id,
-                    center_before_symbol=board[2][2],
+                    center_before_symbol=context.center_before,
                     center_after_symbol=expected,
-                    local_neighborhood_index=index,
+                    local_neighborhood_index=context.index,
                     claim_kind=CLAIM_KIND_SUFFICIENT,
                 )
             )
@@ -264,10 +309,12 @@ def obligation_ids_for_conjecture_in_season(
             obligations.add(
                 obligation_id(
                     world_version=season.spec.season_id,
-                    center_before_symbol=board[2][2],
+                    center_before_symbol=context.center_before,
                     center_after_symbol=expected,
-                    local_neighborhood_index=index,
+                    local_neighborhood_index=context.index,
                     claim_kind=CLAIM_KIND_NECESSARY,
                 )
             )
-    return frozenset(obligations)
+    result = frozenset(obligations)
+    _SEASON_CONJECTURE_OBLIGATION_CACHE[cache_key] = result
+    return result

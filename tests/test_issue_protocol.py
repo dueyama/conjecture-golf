@@ -38,6 +38,21 @@ def test_reject_user_supplied_transcript_metadata():
         parse_issue_comment('/cg {"type":"score","player":"p","_meta":{"created_at":"2026-05-14T00:00:00Z"}}')
 
 
+def test_reject_unknown_score_command_field():
+    with pytest.raises(ValidationError):
+        parse_issue_comment('/cg {"type":"score","player":"p","bonus":999}')
+
+
+def test_reject_ambiguous_counterexample_board_sources():
+    text = (
+        '/cg {"type":"counterexample","player":"p","against":"c",'
+        '"before":[".....",".....",".....",".....","....."],'
+        '"board":[".....",".....",".....",".....","....."]}'
+    )
+    with pytest.raises(ValidationError):
+        parse_issue_comment(text)
+
+
 def test_reject_bot_comment():
     result = parse_issue_comment('/cg {"type":"score"}', author_login="github-actions[bot]")
     assert not result.accepted
@@ -106,3 +121,20 @@ def test_malformed_issue_command_becomes_invalid_transcript_record():
     assert commands[0]["type"] == "invalid"
     assert commands[0]["player"] == "human"
     assert commands[0]["reason"] == "malformed_issue_comment"
+
+
+def test_schema_invalid_issue_command_becomes_invalid_transcript_record():
+    comments = [
+        {
+            "id": 125,
+            "created_at": "2026-05-14T00:00:00Z",
+            "body": '/cg {"type":"score","player":"human","bonus":999}',
+            "user": {"login": "human"},
+        }
+    ]
+
+    commands = commands_from_issue_comments(comments)
+
+    assert commands[0]["type"] == "invalid"
+    assert commands[0]["player"] == "human"
+    assert "unknown score command fields" in commands[0]["message"]

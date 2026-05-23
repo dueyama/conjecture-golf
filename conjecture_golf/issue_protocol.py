@@ -10,7 +10,7 @@ import json
 from dataclasses import dataclass
 from typing import Any, Mapping
 
-from .replay import ReplayState, apply_command, replay_records
+from .replay import ReplayState, apply_command, normalize_command, replay_records
 from .score import leaderboard_rows, render_markdown
 from .verify import Verdict, redact_verdict
 from .world import ValidationError
@@ -65,6 +65,7 @@ def parse_issue_comment(text: str, *, author_login: str | None = None) -> IssueP
     command_type = payload.get("type")
     if command_type not in ALLOWED_COMMAND_TYPES:
         raise ValidationError(f"command type must be one of {sorted(ALLOWED_COMMAND_TYPES)}")
+    payload = normalize_command(payload)
     return IssueParseResult(True, parsed=ParsedIssueCommand(command=payload, raw_json=raw))
 
 

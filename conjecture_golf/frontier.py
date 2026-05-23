@@ -91,12 +91,44 @@ def _stale_traps(
     return sorted(rows, key=lambda row: (-row["coverage_ratio"], row["uncovered"], row["claim_kind"], row["transition"]))[:limit]
 
 
+def _subtract_summary(total: Mapping[str, Any], covered: Mapping[str, Any]) -> dict[str, Any]:
+    def subtract_counts(total_counts: Mapping[str, Any], covered_counts: Mapping[str, Any]) -> dict[str, int]:
+        keys = set(total_counts) | set(covered_counts)
+        rows: dict[str, int] = {}
+        for key in keys:
+            value = int(total_counts.get(key, 0)) - int(covered_counts.get(key, 0))
+            if value > 0:
+                rows[str(key)] = value
+        return dict(sorted(rows.items()))
+
+    return {
+        "total": max(0, int(total.get("total", 0)) - int(covered.get("total", 0))),
+        "by_claim_kind": {
+            claim_kind: max(
+                0,
+                int(total.get("by_claim_kind", {}).get(claim_kind, 0))
+                - int(covered.get("by_claim_kind", {}).get(claim_kind, 0)),
+            )
+            for claim_kind in ("sufficient", "necessary")
+        },
+        "by_transition": subtract_counts(
+            total.get("by_transition", {}),
+            covered.get("by_transition", {}),
+        ),
+        "by_claim_and_transition": subtract_counts(
+            total.get("by_claim_and_transition", {}),
+            covered.get("by_claim_and_transition", {}),
+        ),
+    }
+
+
 def build_frontier_report(state: ReplayState, *, season: CompiledSeason | None = None) -> FrontierReport:
     universe = all_local_obligation_ids_for_season(season) if season is not None else all_local_obligation_ids()
     covered = frozenset(item for item in state.obligation_ledger.covered if item in universe)
     uncovered = universe - covered
+    universe_summary = summarize_obligation_ids(universe)
     covered_summary = summarize_obligation_ids(covered)
-    uncovered_summary = summarize_obligation_ids(uncovered)
+    uncovered_summary = _subtract_summary(universe_summary, covered_summary)
     total = len(universe)
     return FrontierReport(
         total_obligations=total,

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from functools import lru_cache
 from pathlib import Path
 
 from .season import repo_root
@@ -32,4 +33,9 @@ def load_optional_compiled_season(season: str | Path | None) -> CompiledSeason |
     path = resolve_season_path(season)
     if path is None:
         return None
+    return _load_compiled_season_cached(str(path.resolve()), path.stat().st_mtime_ns, path.stat().st_size)
+
+
+@lru_cache(maxsize=16)
+def _load_compiled_season_cached(path: str, mtime_ns: int, size: int) -> CompiledSeason:
     return load_compiled_season(path)

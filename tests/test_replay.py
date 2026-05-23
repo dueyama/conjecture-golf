@@ -85,6 +85,23 @@ def test_hello_registers_agent_profile_without_scoring_points():
     assert state.verdicts[1].details["agent_profiles"]["codex-local"]["kind"] == "llm_agent"
 
 
+def test_hello_accepts_public_transcript_metadata():
+    command = {
+        **HELLO_CODEX,
+        "_meta": {
+            "source": "github_issue",
+            "author_login": "operator",
+            "created_at": "2026-05-14T00:00:00Z",
+            "comment_id": 10,
+        },
+    }
+
+    state = replay_records([command])
+
+    assert state.verdicts[0].ok
+    assert state.agent_profiles["codex-local"]["kind"] == "llm_agent"
+
+
 def test_hello_rejects_unknown_profile_fields():
     bad = {
         **HELLO_CODEX,
@@ -106,6 +123,54 @@ def test_hello_rejects_unknown_top_level_fields():
 
     assert not state.verdicts[0].ok
     assert "unknown hello fields" in state.verdicts[0].message
+
+
+def test_replay_rejects_unknown_score_command_fields():
+    state = replay_records([{"type": "score", "player": "observer", "bonus": 999}])
+
+    assert not state.verdicts[0].ok
+    assert state.verdicts[0].kind == "invalid"
+    assert "unknown score command fields" in state.verdicts[0].message
+
+
+def test_replay_rejects_unknown_counterexample_fields():
+    state = replay_records(
+        [
+            TRUE_FLOWER,
+            {
+                "type": "counterexample",
+                "player": "bad",
+                "against": "flower_growth",
+                "before": [".W...", ".....", "..F..", ".....", "....."],
+                "after": [".....", ".....", ".....", ".....", "....."],
+            },
+        ]
+    )
+
+    assert not state.verdicts[1].ok
+    assert "unknown counterexample command fields" in state.verdicts[1].message
+
+
+def test_replay_rejects_missing_counterexample_board_source():
+    state = replay_records([{"type": "counterexample", "player": "bad", "against": "flower_growth"}])
+
+    assert not state.verdicts[0].ok
+    assert "exactly one of before, board, or transition.before" in state.verdicts[0].message
+
+
+def test_replay_rejects_unknown_transcript_metadata_fields():
+    state = replay_records(
+        [
+            {
+                "type": "score",
+                "player": "observer",
+                "_meta": {"created_at": "2026-05-14T00:00:00Z", "hidden": "nope"},
+            }
+        ]
+    )
+
+    assert not state.verdicts[0].ok
+    assert "unknown _meta fields" in state.verdicts[0].message
 
 
 def test_player_cooldown_rejects_fast_repeat_commands():

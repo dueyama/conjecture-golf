@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import hashlib
 import json
 import sys
@@ -14,6 +15,10 @@ from .dsl import antecedent_matches, complexity, player_name_from_submission, va
 from .season_catalog import load_optional_compiled_season
 from .season_engine import CompiledSeason
 from .world import BOARD_SIZE, Board, ValidationError, canonical_test_boards, evolve, format_board, related_coords, tiny_local_boards, validate_board
+
+_DEFAULT_CONJECTURE_VERDICT_CACHE: dict[tuple[str, bool], Verdict] = {}
+_SEASON_CONJECTURE_VERDICT_CACHE: dict[tuple[str, str, bool], Verdict] = {}
+_MAX_VERDICT_CACHE_SIZE = 512
 
 
 @dataclass(frozen=True)
@@ -32,6 +37,24 @@ class Verdict:
 def _digest_payload(payload: Any) -> str:
     encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
+
+
+def _canonical_json(payload: Any) -> str:
+    return json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def _season_cache_key(season: CompiledSeason) -> str:
+    return _canonical_json(season.spec.raw)
+
+
+def _clone_verdict(verdict: Verdict) -> Verdict:
+    return replace(verdict, details=copy.deepcopy(verdict.details))
+
+
+def _remember_verdict(cache: dict[Any, Verdict], key: Any, verdict: Verdict) -> None:
+    if len(cache) >= _MAX_VERDICT_CACHE_SIZE:
+        cache.clear()
+    cache[key] = _clone_verdict(verdict)
 
 
 def redact_verdict(verdict: Verdict, *, reveal_policy: str = "full") -> Verdict:
@@ -146,17 +169,16 @@ def _verify_conjecture_with_season(
         claim_kind = normalized.get("claim_kind", "sufficient")
 
         if exhaustive_local:
-            board_iter = (season.center_embed_3x3(local) for local in season.tiny_local_boards(size=3))
-            cell_iter = lambda board: [(2, 2)]
+            contexts = season.local_center_contexts
         else:
             boards = [board for board in canonical_test_boards() if set("".join(board)) <= season.symbol_set]
-            board_iter = iter(boards)
-            cell_iter = lambda board: [(row, col) for row in range(len(board)) for col in range(len(board[row]))]
 
-        for board in board_iter:
-            for row, col in cell_iter(board):
+        if exhaustive_local:
+            for context in contexts:
+                board = context.board
+                row, col = 1, 1
                 antecedent = season.evaluate_conditions(board, row, col, normalized["if"])
-                actual = season.next_symbol_for_cell(board, row, col)
+                actual = context.center_after
                 target_produced = actual == expected
                 if claim_kind in {"sufficient", "equivalence"} and antecedent:
                     obligations_checked += 1
@@ -166,11 +188,12 @@ def _verify_conjecture_with_season(
                     (claim_kind in {"sufficient", "equivalence"} and antecedent and not target_produced)
                     or (claim_kind in {"necessary", "equivalence"} and target_produced and not antecedent)
                 ):
+                    witness_board = season.center_embed_3x3(context.local)
                     counterexamples.append(
                         {
-                            "board": board,
-                            "after": season.step_board(board),
-                            "cell": [row, col],
+                            "board": witness_board,
+                            "after": season.step_board(witness_board),
+                            "cell": [2, 2],
                             "expected": expected,
                             "actual": actual,
                             "claim_kind": claim_kind,
@@ -178,8 +201,37 @@ def _verify_conjecture_with_season(
                         }
                     )
                     break
-            if counterexamples:
-                break
+        else:
+            for board in boards:
+                for row in range(len(board)):
+                    for col in range(len(board[row])):
+                        antecedent = season.evaluate_conditions(board, row, col, normalized["if"])
+                        actual = season.next_symbol_for_cell(board, row, col)
+                        target_produced = actual == expected
+                        if claim_kind in {"sufficient", "equivalence"} and antecedent:
+                            obligations_checked += 1
+                        if claim_kind == "necessary" and target_produced:
+                            obligations_checked += 1
+                        if (
+                            (claim_kind in {"sufficient", "equivalence"} and antecedent and not target_produced)
+                            or (claim_kind in {"necessary", "equivalence"} and target_produced and not antecedent)
+                        ):
+                            counterexamples.append(
+                                {
+                                    "board": board,
+                                    "after": season.step_board(board),
+                                    "cell": [row, col],
+                                    "expected": expected,
+                                    "actual": actual,
+                                    "claim_kind": claim_kind,
+                                    "antecedent": antecedent,
+                                }
+                            )
+                            break
+                    if counterexamples:
+                        break
+                if counterexamples:
+                    break
 
         comp = season.conjecture_complexity(normalized)
         if counterexamples:
@@ -235,6 +287,39 @@ def _verify_conjecture_with_season(
 
 
 def verify_conjecture(
+    conjecture: Mapping[str, Any],
+    *,
+    exhaustive_local: bool = True,
+    season: CompiledSeason | None = None,
+) -> Verdict:
+    try:
+        if season is not None:
+            normalized = season.validate_conjecture(conjecture)
+            cache_key = (_season_cache_key(season), _canonical_json(normalized), exhaustive_local)
+            cached = _SEASON_CONJECTURE_VERDICT_CACHE.get(cache_key)
+            if cached is not None:
+                return _clone_verdict(cached)
+            verdict = _verify_conjecture_uncached(
+                normalized,
+                exhaustive_local=exhaustive_local,
+                season=season,
+            )
+            _remember_verdict(_SEASON_CONJECTURE_VERDICT_CACHE, cache_key, verdict)
+            return _clone_verdict(verdict)
+
+        normalized = validate_conjecture(conjecture)
+        cache_key = (_canonical_json(normalized), exhaustive_local)
+        cached = _DEFAULT_CONJECTURE_VERDICT_CACHE.get(cache_key)
+        if cached is not None:
+            return _clone_verdict(cached)
+        verdict = _verify_conjecture_uncached(normalized, exhaustive_local=exhaustive_local)
+        _remember_verdict(_DEFAULT_CONJECTURE_VERDICT_CACHE, cache_key, verdict)
+        return _clone_verdict(verdict)
+    except ValidationError as exc:
+        return Verdict(ok=False, kind="conjecture", message=str(exc), score_delta=-5)
+
+
+def _verify_conjecture_uncached(
     conjecture: Mapping[str, Any],
     *,
     exhaustive_local: bool = True,

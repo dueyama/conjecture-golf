@@ -32,11 +32,29 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           CG_MIN_PLAYER_INTERVAL_SECONDS: "21600"
           CG_SEASON_SCORING: "1"
+          CG_ARENA_GATE: "1"
           CG_REVEAL_POLICY: redacted
+          CG_CANONICAL_BRANCH: arena/season-0
+          CG_QUARANTINE_BRANCH: quarantine/season-0
+          CG_INVALID_STRIKES_TO_DISQUALIFY: "3"
           VERDICT_FILE: verdict.md
+          CG_CANONICAL_TRANSCRIPT_FILE: arena-transcript.jsonl
+          CG_QUARANTINE_TRANSCRIPT_FILE: quarantine-transcript.jsonl
+          CG_ARENA_DECISION_FILE: arena-routing.json
+          CG_BRANCH_STORE_DIR: arena-branch-store
         run: python -m conjecture_golf.github_issue_handler
       - name: Post verdict
         if: always() && hashFiles('verdict.md') != ''
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh issue comment "${{ github.event.issue.number }}" --repo "${{ github.repository }}" --body-file verdict.md
+      - name: Upload routing artifacts
+        if: always() && hashFiles('arena-routing.json') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: conjecture-golf-routing-${{ github.event.issue.number }}-${{ github.event.comment.id }}
+          path: |
+            arena-routing.json
+            arena-transcript.jsonl
+            quarantine-transcript.jsonl
+            arena-branch-store

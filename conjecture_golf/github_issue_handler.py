@@ -13,6 +13,15 @@ import subprocess
 import sys
 from typing import Any
 
+from .arena_packet import build_arena_turn_packet, render_arena_turn_packet_markdown
+from .arena_branch_store import write_branch_store
+from .arena_gate import DEFAULT_CANONICAL_BRANCH, DEFAULT_INVALID_STRIKES_TO_DISQUALIFY, DEFAULT_QUARANTINE_BRANCH
+from .arena_issue import (
+    command_from_issue_comment,
+    render_routing_markdown,
+    route_issue_comments,
+    write_routing_artifacts,
+)
 from .issue_protocol import (
     attach_issue_metadata,
     commands_from_issue_comments,
@@ -58,45 +67,133 @@ def fetch_issue_comments(repo: str, issue_number: str) -> list[dict[str, Any]]:
     return payload
 
 
+def _current_comment() -> dict[str, Any]:
+    comment: dict[str, Any] = {
+        "body": os.environ.get("COMMENT_BODY", ""),
+        "user": {"login": os.environ.get("COMMENT_AUTHOR", "")},
+    }
+    comment_created_at = os.environ.get("COMMENT_CREATED_AT", "")
+    comment_id = os.environ.get("COMMENT_ID", "")
+    if comment_created_at:
+        comment["created_at"] = comment_created_at
+    if comment_id:
+        comment["id"] = comment_id
+    return comment
+
+
+def _prior_comments(comments: list[dict[str, Any]], current: dict[str, Any]) -> list[dict[str, Any]]:
+    comment_body = current.get("body", "")
+    comment_id = current.get("id")
+    prior_comments = []
+    for comment in comments:
+        body = comment.get("body", "")
+        # Exclude the current command from prior replay.
+        if comment_id and str(comment.get("id")) == str(comment_id):
+            break
+        if (
+            not comment_id
+            and isinstance(body, str)
+            and isinstance(comment_body, str)
+            and body.strip() == comment_body.strip()
+        ):
+            break
+        prior_comments.append(comment)
+    return prior_comments
+
+
 def main() -> int:
     comment_body = os.environ.get("COMMENT_BODY", "")
     issue_number = os.environ.get("ISSUE_NUMBER", "")
     repo = os.environ.get("GH_REPO") or os.environ.get("GITHUB_REPOSITORY", "")
     author_login = os.environ.get("COMMENT_AUTHOR", "")
-    comment_created_at = os.environ.get("COMMENT_CREATED_AT", "")
-    comment_id = os.environ.get("COMMENT_ID", "")
     min_player_interval_seconds = int(
         os.environ.get("CG_MIN_PLAYER_INTERVAL_SECONDS", str(DEFAULT_MIN_PLAYER_INTERVAL_SECONDS))
     )
     season_scoring = _env_bool("CG_SEASON_SCORING", default=True)
     reveal_policy = os.environ.get("CG_REVEAL_POLICY", "redacted" if season_scoring else "full")
+    arena_gate = _env_bool("CG_ARENA_GATE", default=True)
+    canonical_branch = os.environ.get("CG_CANONICAL_BRANCH", DEFAULT_CANONICAL_BRANCH)
+    quarantine_branch = os.environ.get("CG_QUARANTINE_BRANCH", DEFAULT_QUARANTINE_BRANCH)
+    invalid_strikes_to_disqualify = int(
+        os.environ.get("CG_INVALID_STRIKES_TO_DISQUALIFY", str(DEFAULT_INVALID_STRIKES_TO_DISQUALIFY))
+    )
 
     if not issue_number or not repo:
         print("Missing ISSUE_NUMBER or GH_REPO/GITHUB_REPOSITORY", file=sys.stderr)
         return 2
 
     try:
+        if arena_gate:
+            current_comment = _current_comment()
+            if command_from_issue_comment(current_comment) is None:
+                print("Not a Conjecture Golf command; nothing to do.")
+                return 0
+            comments = fetch_issue_comments(repo, issue_number)
+            routing = route_issue_comments(
+                [*_prior_comments(comments, current_comment), current_comment],
+                min_player_interval_seconds=min_player_interval_seconds,
+                season_scoring=season_scoring,
+                invalid_strikes_to_disqualify=invalid_strikes_to_disqualify,
+                canonical_branch=canonical_branch,
+                quarantine_branch=quarantine_branch,
+            )
+            decision = routing.current_decision
+            if decision is None:
+                print("Not a Conjecture Golf command; nothing to do.")
+                return 0
+            state = replay_records(
+                routing.canonical_records,
+                min_player_interval_seconds=min_player_interval_seconds,
+                season_scoring=season_scoring,
+            )
+            arena_packet = build_arena_turn_packet(
+                canonical_records=routing.canonical_records,
+                quarantine_records=routing.quarantine_records,
+                decision=decision,
+                canonical_branch=canonical_branch,
+                quarantine_branch=quarantine_branch,
+                invalid_strikes_to_disqualify=invalid_strikes_to_disqualify,
+                min_player_interval_seconds=min_player_interval_seconds,
+                season_scoring=season_scoring,
+            )
+            markdown = (
+                render_routing_markdown(decision, reveal_policy=reveal_policy)
+                + "\n\n"
+                + render_state_markdown(state)
+                + "\n\n"
+                + render_arena_turn_packet_markdown(arena_packet)
+            )
+            write_routing_artifacts(
+                routing,
+                canonical_path=os.environ.get("CG_CANONICAL_TRANSCRIPT_FILE"),
+                quarantine_path=os.environ.get("CG_QUARANTINE_TRANSCRIPT_FILE"),
+                decision_path=os.environ.get("CG_ARENA_DECISION_FILE"),
+            )
+            branch_store_dir = os.environ.get("CG_BRANCH_STORE_DIR")
+            if branch_store_dir:
+                write_branch_store(
+                    canonical_records=routing.canonical_records,
+                    quarantine_records=routing.quarantine_records,
+                    decisions=[decision.to_dict() for decision in routing.decisions],
+                    out_dir=branch_store_dir,
+                    canonical_branch=canonical_branch,
+                    quarantine_branch=quarantine_branch,
+                    invalid_strikes_to_disqualify=invalid_strikes_to_disqualify,
+                )
+            out_path = os.environ.get("VERDICT_FILE", "verdict.md")
+            with open(out_path, "w", encoding="utf-8") as f:
+                f.write(markdown)
+            print(markdown)
+            return 0
+
         parse_result = parse_issue_comment(comment_body, author_login=author_login)
         if not parse_result.accepted or not parse_result.parsed:
             print("Not a Conjecture Golf command; nothing to do.")
             return 0
 
         comments = fetch_issue_comments(repo, issue_number)
-        prior_comments = []
-        for comment in comments:
-            body = comment.get("body", "")
-            # Exclude the current command from prior replay.
-            if comment_id and str(comment.get("id")) == str(comment_id):
-                break
-            if not comment_id and isinstance(body, str) and body.strip() == comment_body.strip():
-                break
-            prior_comments.append(comment)
-
-        current_comment: dict[str, Any] = {"body": comment_body, "user": {"login": author_login}}
-        if comment_created_at:
-            current_comment["created_at"] = comment_created_at
-        if comment_id:
-            current_comment["id"] = comment_id
+        current_comment = _current_comment()
+        prior_comments = _prior_comments(comments, current_comment)
 
         prior_commands = commands_from_issue_comments(prior_comments)
         current_command = attach_issue_metadata(parse_result.parsed.command, current_comment)
