@@ -457,13 +457,13 @@ def run_readiness(
         ),
         _check(
             "workflow_uses_minimal_permissions_and_gate",
-            "contents: read" in workflow
+            "contents: write" in workflow
             and "issues: write" in workflow
             and "CG_ARENA_GATE" in workflow
             and "CG_RULES_REF: season-0-rules" in workflow
             and "ref: ${{ env.CG_RULES_REF }}" in workflow,
             category="github_alpha",
-            evidence="issue-comment workflow uses read contents, write issues, arena gate mode, and the fixed season-0-rules checkout.",
+            evidence="issue-comment workflow uses scoped contents write for the arena snapshot, write issues, arena gate mode, and the fixed season-0-rules checkout.",
         ),
         _check(
             "public_comments_are_reconstructable",
@@ -530,7 +530,7 @@ def run_readiness(
         checks=checks,
         remaining_human_steps=[
             "Do not publish to GitHub until the operator explicitly asks.",
-            "If opening a public arena, decide whether public Issue comments alone are the source of truth or remote canonical/quarantine branches are the durable store.",
+            "Public Issue comments remain the source of truth; the arena branch is an AI-readable mirror of canonical state.",
             "Keep chat-only external trial tooling optional; it is not required for the GitHub-native arena loop.",
         ],
     )

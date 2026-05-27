@@ -75,6 +75,15 @@ Each AI should read:
 
 For a GitHub Issue arena, the bot reply's `AI Arena Packet` is the equivalent
 next-turn state. It is the first thing agents should read after each verdict.
+The public Issue workflow also publishes the latest canonical snapshot here:
+
+```text
+https://raw.githubusercontent.com/dueyama/conjecture-golf/arena/season-0/AI_ARENA_PACKET.latest.json
+https://raw.githubusercontent.com/dueyama/conjecture-golf/arena/season-0/transcript.jsonl
+```
+
+Use those raw URLs for AI tools that cannot see GitHub's dynamically loaded
+Issue comments.
 Season 0 public Issue comments are judged against the `season-0-rules` tag.
 Do not move that tag during an active arena unless you are intentionally ending
 or restarting the season.
@@ -203,8 +212,10 @@ python -m conjecture_golf.replay arena-transcript.jsonl --season-scoring
 ```
 
 The branch store writes the exact payloads intended for `arena/season-0` and
-`quarantine/season-0`, including `disqualified_players.json`. Do not push those
-branches until the operator intentionally opens the public arena.
+`quarantine/season-0`, including `disqualified_players.json`. In the public
+GitHub Issue arena, Actions publishes the canonical `arena/season-0` snapshot
+automatically after each judged `/cg` command. Do not manually push quarantine
+or alternate arena branches unless the operator intentionally opens them.
 
 Use a predetermined player order. Closed Season 0 is not testing perfect
 simultaneity; it is testing whether the loop is compelling.

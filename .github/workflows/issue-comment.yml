@@ -5,7 +5,7 @@ on:
     types: [created]
 
 permissions:
-  contents: read
+  contents: write
   issues: write
 
 env:
@@ -59,6 +59,35 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh issue comment "${{ github.event.issue.number }}" --repo "${{ github.repository }}" --body-file verdict.md
+      - name: Prepare canonical arena latest files
+        if: success() && hashFiles('arena-branch-store/arena/season-0/transcript.jsonl') != ''
+        run: |
+          python - <<'PY'
+          import json
+          import re
+          from pathlib import Path
+
+          verdict = Path("verdict.md").read_text(encoding="utf-8")
+          marker = "## AI Arena Packet"
+          marker_index = verdict.rfind(marker)
+          if marker_index < 0:
+              raise SystemExit("AI Arena Packet marker not found in verdict.md")
+          match = re.search(r"```json\n(.*?)\n```", verdict[marker_index:], re.S)
+          if match is None:
+              raise SystemExit("AI Arena Packet JSON fence not found in verdict.md")
+          packet = json.loads(match.group(1))
+          out = Path("arena-branch-store/arena/season-0/AI_ARENA_PACKET.latest.json")
+          out.parent.mkdir(parents=True, exist_ok=True)
+          out.write_text(json.dumps(packet, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+          PY
+          cat >> arena-branch-store/arena/season-0/README.md <<'EOF'
+
+          ## Latest AI Arena Packet
+
+          `AI_ARENA_PACKET.latest.json` is the latest machine-readable state for
+          constrained AI players. Refresh it after every `/cg` verdict before
+          choosing a move.
+          EOF
       - name: Upload routing artifacts
         if: always() && hashFiles('arena-routing.json') != ''
         uses: actions/upload-artifact@v4
@@ -69,3 +98,29 @@ jobs:
             arena-transcript.jsonl
             quarantine-transcript.jsonl
             arena-branch-store
+      - name: Publish canonical arena branch
+        if: success() && hashFiles('arena-branch-store/arena/season-0/AI_ARENA_PACKET.latest.json') != ''
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PUBLISH_BRANCH: arena/season-0
+        run: |
+          set -euo pipefail
+          publish_dir="$(mktemp -d)"
+          git init "$publish_dir"
+          git -C "$publish_dir" config user.name "github-actions[bot]"
+          git -C "$publish_dir" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C "$publish_dir" remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          if git -C "$publish_dir" fetch --depth=1 origin "refs/heads/${PUBLISH_BRANCH}:refs/remotes/origin/${PUBLISH_BRANCH}"; then
+            git -C "$publish_dir" checkout -B "$PUBLISH_BRANCH" "refs/remotes/origin/${PUBLISH_BRANCH}"
+            git -C "$publish_dir" rm -r --quiet . || true
+          else
+            git -C "$publish_dir" checkout --orphan "$PUBLISH_BRANCH"
+          fi
+          cp -R "$GITHUB_WORKSPACE/arena-branch-store/arena/season-0/." "$publish_dir/"
+          git -C "$publish_dir" add -A
+          if git -C "$publish_dir" diff --cached --quiet; then
+            echo "Canonical arena branch is already current."
+            exit 0
+          fi
+          git -C "$publish_dir" commit -m "Update Season 0 arena snapshot [skip ci]"
+          git -C "$publish_dir" push origin "HEAD:${PUBLISH_BRANCH}"

@@ -2,6 +2,9 @@ name: Conjecture Golf CI
 
 on:
   push:
+    branches-ignore:
+      - "arena/**"
+      - "quarantine/**"
   pull_request:
 
 permissions:
