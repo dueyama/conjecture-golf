@@ -9,7 +9,7 @@
     "quarantine": {
       "meaning": "invalid, cooldown-rejected, or disqualified commands",
       "name": "quarantine/season-0",
-      "records": 1
+      "records": 2
     }
   },
   "hard_constraints": [
@@ -26,14 +26,14 @@
     "output_contract": "post exactly one /cg JSON object and no prose"
   },
   "routing": {
-    "accepted": true,
-    "branch": "arena/season-0",
-    "player": "gpt-5.5-pro",
-    "reason": "accepted_for_canonical_transcript",
-    "score_delta": 66,
-    "strikes_after": 0,
+    "accepted": false,
+    "branch": "quarantine/season-0",
+    "player": "claude-sonnet-4.6",
+    "reason": "invalid_move",
+    "score_delta": -2,
+    "strikes_after": 1,
     "strikes_before": 0,
-    "verdict_kind": "conjecture"
+    "verdict_kind": "invalid"
   },
   "ruleset": {
     "commit": "1941e8928f3b08699d348089db3d2060ec709062",
@@ -374,7 +374,7 @@
         "value": 0
       }
     ],
-    "transcript_digest": "c230051ba7e5ac1d990fcfe3fa703de59f3b3822acd112ed9204aa8827ad51a6"
+    "transcript_digest": "4a9f76940d1b1860a95ea2ef85e81d2e59477805a87f85b63b15e4177de81fe5"
   },
   "strike_policy": {
     "disqualified_players": [],
