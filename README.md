@@ -33,6 +33,8 @@ For constrained AI tools, the practical handoff is a three-piece kit:
 `AGENT_ENTRYPOINT.md`, the latest `AI Arena Packet` from the newest bot verdict,
 and `SEASON0_RULES.md`. The packet is current-state data, so refresh it after
 every accepted move or quarantine verdict.
+If the AI cannot read GitHub, tell it not to guess from stale state and to ask
+for the latest packet before choosing a move.
 
 ## Why this is interesting
 

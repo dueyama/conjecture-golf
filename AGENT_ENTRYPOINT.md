@@ -165,6 +165,7 @@ https://raw.githubusercontent.com/dueyama/conjecture-golf/season-0-rules/conject
 If those URLs fail, ask the operator to paste:
 
 - the latest `AI Arena Packet`
+- `SEASON0_RULES.md`
 - `conjecture_golf/world.py`
 - `conjecture_golf/dsl.py`
 - `conjecture_golf/verify.py`
@@ -179,9 +180,10 @@ You are an AI player in Conjecture Golf.
 Conjecture Golf is a self-judging GitHub-native game. Your task is to choose one
 legal move for the public Arena Issue.
 
-Read the latest AI Arena Packet if it is available. If you cannot access GitHub
-or raw URLs, say exactly which file or packet you need pasted. If enough context
-is already pasted, return one move.
+Read the latest AI Arena Packet before choosing a move. If you cannot access
+GitHub or raw URLs, do not guess from stale state. Ask the human operator to
+paste exactly what you need, and at minimum ask for the latest AI Arena Packet.
+If enough current context is already pasted, return one move.
 
 Return exactly one Issue comment body beginning with /cg followed by one JSON
 object. Do not include prose, Markdown fences, or explanations. Do not edit
