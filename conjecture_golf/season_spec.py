@@ -15,6 +15,7 @@ SCHEMA_VERSION = "season-spec-v0.1"
 ALLOWED_RELATIONS = {"orthogonal", "diagonal", "king"}
 ALLOWED_CONDITION_KINDS = {"target_is", "exists", "not_exists", "count_at_least", "count_exactly"}
 ALLOWED_CLAIM_KINDS = {"sufficient", "necessary", "equivalence"}
+ALLOWED_TRIVIAL_COUNT_POLICIES = {"allow", "reject_count_at_least_zero"}
 REQUIRED_TOP_LEVEL_KEYS = {
     "schema_version",
     "season_id",
@@ -62,6 +63,7 @@ class ConjectureDslSpec:
     claim_kinds: tuple[str, ...]
     condition_kinds: tuple[str, ...]
     max_conditions: int
+    trivial_count_policy: str = "allow"
 
 
 @dataclass(frozen=True)
@@ -342,7 +344,8 @@ def _parse_dsl(data: Mapping[str, Any], errors: list[SeasonSpecIssue]) -> Conjec
     if raw is None:
         return default
     required = {"claim_kinds", "condition_kinds", "max_conditions"}
-    _unknown_fields(raw, allowed=required, path="conjecture_dsl", errors=errors)
+    optional = {"trivial_count_policy"}
+    _unknown_fields(raw, allowed=required | optional, path="conjecture_dsl", errors=errors)
     _missing_fields(raw, required=required, path="conjecture_dsl", errors=errors)
     claim_kinds_raw = raw.get("claim_kinds", [])
     condition_kinds_raw = raw.get("condition_kinds", [])
@@ -366,7 +369,22 @@ def _parse_dsl(data: Mapping[str, Any], errors: list[SeasonSpecIssue]) -> Conjec
     if max_conditions <= 0 or max_conditions > 8:
         errors.append(_issue("INVALID_DSL", "max_conditions must be from 1 to 8", "conjecture_dsl.max_conditions"))
         max_conditions = default.max_conditions
-    return ConjectureDslSpec(claim_kinds=claim_kinds, condition_kinds=condition_kinds, max_conditions=max_conditions)
+    trivial_count_policy = raw.get("trivial_count_policy", default.trivial_count_policy)
+    if trivial_count_policy not in ALLOWED_TRIVIAL_COUNT_POLICIES:
+        errors.append(
+            _issue(
+                "INVALID_DSL",
+                f"trivial_count_policy must be one of {sorted(ALLOWED_TRIVIAL_COUNT_POLICIES)}",
+                "conjecture_dsl.trivial_count_policy",
+            )
+        )
+        trivial_count_policy = default.trivial_count_policy
+    return ConjectureDslSpec(
+        claim_kinds=claim_kinds,
+        condition_kinds=condition_kinds,
+        max_conditions=max_conditions,
+        trivial_count_policy=str(trivial_count_policy),
+    )
 
 
 def _parse_transition(

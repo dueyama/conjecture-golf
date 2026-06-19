@@ -30,8 +30,10 @@ from .issue_protocol import (
     render_verdict_markdown,
 )
 from .replay import apply_command, replay_records
+from .season_catalog import load_optional_compiled_season
 
 DEFAULT_MIN_PLAYER_INTERVAL_SECONDS = 6 * 60 * 60
+DEFAULT_ACTIVE_ARENA_URL = "https://github.com/dueyama/conjecture-golf/issues/2"
 
 
 def _env_bool(name: str, *, default: bool) -> bool:
@@ -57,6 +59,28 @@ def _git_head_commit() -> str:
     except (OSError, subprocess.CalledProcessError):
         return ""
     return completed.stdout.strip()
+
+
+def _write_verdict(markdown: str) -> None:
+    out_path = os.environ.get("VERDICT_FILE", "verdict.md")
+    with open(out_path, "w", encoding="utf-8") as f:
+        f.write(markdown)
+
+
+def _status_markdown(status: str, *, active_arena_url: str, message: str = "") -> str:
+    if status == "closed":
+        detail = message or "Season 0 is closed. No further moves are accepted for this Issue."
+        return (
+            "**Conjecture Golf season closed**\n\n"
+            f"{detail}\n\n"
+            f"Current active arena: {active_arena_url}\n"
+        )
+    detail = message or "This Issue is not the active Conjecture Golf arena."
+    return (
+        "**Conjecture Golf arena moved**\n\n"
+        f"{detail}\n\n"
+        f"Post new `/cg` moves in the active arena: {active_arena_url}\n"
+    )
 
 
 def fetch_issue_comments(repo: str, issue_number: str) -> list[dict[str, Any]]:
@@ -127,6 +151,11 @@ def main() -> int:
     arena_gate = _env_bool("CG_ARENA_GATE", default=True)
     canonical_branch = os.environ.get("CG_CANONICAL_BRANCH", DEFAULT_CANONICAL_BRANCH)
     quarantine_branch = os.environ.get("CG_QUARANTINE_BRANCH", DEFAULT_QUARANTINE_BRANCH)
+    arena_status = os.environ.get("CG_ARENA_STATUS", "active").strip().lower()
+    arena_status_message = os.environ.get("CG_ARENA_STATUS_MESSAGE", "").strip()
+    active_arena_url = os.environ.get("CG_ACTIVE_ARENA_URL", DEFAULT_ACTIVE_ARENA_URL).strip()
+    season_spec_path = os.environ.get("CG_SEASON_SPEC", "").strip() or None
+    season = load_optional_compiled_season(season_spec_path)
     invalid_strikes_to_disqualify = int(
         os.environ.get("CG_INVALID_STRIKES_TO_DISQUALIFY", str(DEFAULT_INVALID_STRIKES_TO_DISQUALIFY))
     )
@@ -138,6 +167,20 @@ def main() -> int:
         return 2
 
     try:
+        if arena_status in {"closed", "redirect"}:
+            current_comment = _current_comment()
+            if command_from_issue_comment(current_comment) is None:
+                print("Not a Conjecture Golf command; nothing to do.")
+                return 0
+            markdown = _status_markdown(
+                arena_status,
+                active_arena_url=active_arena_url,
+                message=arena_status_message,
+            )
+            _write_verdict(markdown)
+            print(markdown)
+            return 0
+
         if arena_gate:
             current_comment = _current_comment()
             if command_from_issue_comment(current_comment) is None:
@@ -148,6 +191,7 @@ def main() -> int:
                 [*_prior_comments(comments, current_comment), current_comment],
                 min_player_interval_seconds=min_player_interval_seconds,
                 season_scoring=season_scoring,
+                season=season,
                 invalid_strikes_to_disqualify=invalid_strikes_to_disqualify,
                 canonical_branch=canonical_branch,
                 quarantine_branch=quarantine_branch,
@@ -160,6 +204,7 @@ def main() -> int:
                 routing.canonical_records,
                 min_player_interval_seconds=min_player_interval_seconds,
                 season_scoring=season_scoring,
+                season=season,
             )
             arena_packet = build_arena_turn_packet(
                 canonical_records=routing.canonical_records,
@@ -170,6 +215,7 @@ def main() -> int:
                 invalid_strikes_to_disqualify=invalid_strikes_to_disqualify,
                 min_player_interval_seconds=min_player_interval_seconds,
                 season_scoring=season_scoring,
+                season=season,
                 rules_ref=rules_ref,
                 rules_commit=rules_commit,
             )
@@ -197,9 +243,7 @@ def main() -> int:
                     quarantine_branch=quarantine_branch,
                     invalid_strikes_to_disqualify=invalid_strikes_to_disqualify,
                 )
-            out_path = os.environ.get("VERDICT_FILE", "verdict.md")
-            with open(out_path, "w", encoding="utf-8") as f:
-                f.write(markdown)
+            _write_verdict(markdown)
             print(markdown)
             return 0
 
@@ -218,24 +262,22 @@ def main() -> int:
             prior_commands,
             min_player_interval_seconds=min_player_interval_seconds,
             season_scoring=season_scoring,
+            season=season,
         )
         verdict = apply_command(
             state,
             current_command,
             min_player_interval_seconds=min_player_interval_seconds,
             season_scoring=season_scoring,
+            season=season,
         )
         markdown = render_verdict_markdown(verdict, reveal_policy=reveal_policy) + "\n\n" + render_state_markdown(state)
-        out_path = os.environ.get("VERDICT_FILE", "verdict.md")
-        with open(out_path, "w", encoding="utf-8") as f:
-            f.write(markdown)
+        _write_verdict(markdown)
         print(markdown)
         return 0
     except Exception as exc:  # noqa: BLE001 - this is a public issue handler; fail closed.
         markdown = f"❌ **Conjecture Golf command rejected**\n\n```text\n{exc}\n```"
-        out_path = os.environ.get("VERDICT_FILE", "verdict.md")
-        with open(out_path, "w", encoding="utf-8") as f:
-            f.write(markdown)
+        _write_verdict(markdown)
         print(markdown)
         return 1
 

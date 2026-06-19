@@ -15,6 +15,7 @@ def _error_codes(spec):
 
 def test_valid_bundled_specs_load():
     assert load_season_spec("seasons/season_0.json").season_id == "season_0"
+    assert load_season_spec("seasons/season_1.json").season_id == "season_1"
     assert load_season_spec("seasons/candidates/season_1_moss_candidate.json").season_id == "season_1_moss_candidate"
 
 
@@ -88,6 +89,16 @@ def test_duplicate_priority_rejected():
     spec["transition"]["rules"][1]["priority"] = spec["transition"]["rules"][0]["priority"]
 
     assert "DUPLICATE_PRIORITY" in _error_codes(spec)
+
+
+def test_trivial_count_policy_is_validated():
+    spec = _base_spec()
+    spec["conjecture_dsl"]["trivial_count_policy"] = "reject_count_at_least_zero"
+    assert "INVALID_DSL" not in _error_codes(spec)
+
+    bad = _base_spec()
+    bad["conjecture_dsl"]["trivial_count_policy"] = "surprise"
+    assert "INVALID_DSL" in _error_codes(bad)
 
 
 def test_season_spec_cli_lint_render_smoke(capsys):

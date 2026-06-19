@@ -1,4 +1,4 @@
-"""Readiness audit for Conjecture Golf Season 0."""
+"""Readiness audit for Conjecture Golf public arena operation."""
 
 from __future__ import annotations
 
@@ -460,10 +460,11 @@ def run_readiness(
             "contents: write" in workflow
             and "issues: write" in workflow
             and "CG_ARENA_GATE" in workflow
-            and "CG_RULES_REF: season-0-rules" in workflow
-            and "ref: ${{ env.CG_RULES_REF }}" in workflow,
+            and "season-1-rules" in workflow
+            and "CG_SEASON_SPEC" in workflow
+            and "steps.route.outputs.rules_ref" in workflow,
             category="github_alpha",
-            evidence="issue-comment workflow uses scoped contents write for the arena snapshot, write issues, arena gate mode, and the fixed season-0-rules checkout.",
+            evidence="issue-comment workflow uses scoped contents write for the arena snapshot, write issues, arena gate mode, and routed fixed-rules checkouts.",
         ),
         _check(
             "public_comments_are_reconstructable",
@@ -555,7 +556,7 @@ def render_readiness_markdown(report: ReadinessReport) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Audit Conjecture Golf Season 0 readiness.")
+    parser = argparse.ArgumentParser(description="Audit Conjecture Golf public arena readiness.")
     parser.add_argument("--transcript", default="examples/transcripts/basic.jsonl")
     parser.add_argument("--skip-playtest", action="store_true", help="Skip the slower deterministic multi-agent playtest.")
     parser.add_argument("--json", action="store_true", help="Print JSON instead of Markdown.")

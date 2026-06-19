@@ -62,6 +62,11 @@ def build_arena_turn_packet(
             "move_surface": "GitHub Issue comment",
             "output_contract": "post exactly one /cg JSON object and no prose",
             "judge": "deterministic public verifier plus transcript replay",
+            "claim_kinds": ai_state["protocol"]["claim_kinds"],
+            "symbols": ai_state["protocol"]["symbols"],
+            "relations": ai_state["protocol"]["relations"],
+            "condition_ops": ai_state["protocol"]["condition_ops"],
+            "trivial_count_policy": ai_state["protocol"]["trivial_count_policy"],
         },
         "ruleset": {
             "season_id": ai_state["season"]["id"],

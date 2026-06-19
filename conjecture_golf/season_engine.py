@@ -245,6 +245,12 @@ class CompiledSeason:
             n = value["n"]
             if not isinstance(n, int) or n < 0 or n > 8:
                 raise ValidationError("n must be an integer from 0 to 8")
+            if (
+                key == "count_at_least"
+                and n == 0
+                and self.spec.conjecture_dsl.trivial_count_policy == "reject_count_at_least_zero"
+            ):
+                raise ValidationError("count_at_least with n=0 is not allowed in this season")
             normalized[key]["n"] = n
         return normalized
 

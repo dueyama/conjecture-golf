@@ -186,6 +186,15 @@ def build_ai_state(
     )
     frontier = frontier or build_frontier_report(state, season=season)
     standings_data = standings.to_dict()
+    claim_kinds = list(season.spec.conjecture_dsl.claim_kinds) if season else ["sufficient", "necessary", "equivalence"]
+    symbols = list(season.spec.symbol_ids) if season else [".", "F", "W", "S"]
+    relations = list(season.spec.relations) if season else ["orthogonal", "diagonal", "king"]
+    condition_ops = (
+        list(season.spec.conjecture_dsl.condition_kinds)
+        if season
+        else ["target_is", "exists", "not_exists", "count_at_least", "count_exactly"]
+    )
+    trivial_count_policy = season.spec.conjecture_dsl.trivial_count_policy if season else "allow"
     return {
         "schema": "conjecture_golf.ai_state.v1",
         "audience": "machine_player",
@@ -202,10 +211,11 @@ def build_ai_state(
         },
         "protocol": {
             "command_types": ["hello", "conjecture", "counterexample", "score"],
-            "claim_kinds": ["sufficient", "necessary", "equivalence"],
-            "symbols": [".", "F", "W", "S"],
-            "relations": ["orthogonal", "diagonal", "king"],
-            "condition_ops": ["target_is", "exists", "not_exists", "count_at_least", "count_exactly"],
+            "claim_kinds": claim_kinds,
+            "symbols": symbols,
+            "relations": relations,
+            "condition_ops": condition_ops,
+            "trivial_count_policy": trivial_count_policy,
             "output_contract": "exactly_one_json_object_no_prose",
         },
         "participants": [dict(item) for item in participants or []],

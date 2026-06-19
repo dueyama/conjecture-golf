@@ -40,6 +40,14 @@ FALSE_NECESSARY = {
     "then": {"target_becomes": "S"},
 }
 
+TRIVIAL_COUNT_NECESSARY = {
+    "player": "stone",
+    "name": "trivial_count_necessary",
+    "claim_kind": "necessary",
+    "if": [{"count_at_least": {"symbol": "S", "relation": "king", "n": 0}}],
+    "then": {"target_becomes": "W"},
+}
+
 
 def test_true_conjecture_holds_exhaustive_local():
     verdict = verify_conjecture(TRUE_CONJECTURE)
@@ -54,6 +62,21 @@ def test_true_conjecture_holds_with_season_spec():
     assert verdict.ok
     assert verdict.details["season_id"] == "season_0"
     assert verdict.details["coverage"] == 4225
+
+
+def test_season_1_rejects_count_at_least_zero_conjecture_guard():
+    season = load_compiled_season("seasons/season_1.json")
+    verdict = verify_conjecture(TRIVIAL_COUNT_NECESSARY, season=season)
+
+    assert not verdict.ok
+    assert "count_at_least with n=0" in verdict.message
+
+
+def test_season_0_allows_count_at_least_zero_for_archive_replay():
+    season = load_compiled_season("seasons/season_0.json")
+    verdict = verify_conjecture(TRIVIAL_COUNT_NECESSARY, season=season)
+
+    assert verdict.ok
 
 
 def test_false_conjecture_is_refuted():

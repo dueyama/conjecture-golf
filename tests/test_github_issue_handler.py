@@ -71,3 +71,65 @@ def test_issue_handler_arena_gate_quarantines_malformed_current_command(monkeypa
         branch_store / "quarantine" / "season-0" / "quarantine.jsonl"
     ).read_text(encoding="utf-8")
     assert (branch_store / "branch-store-manifest.json").exists()
+
+
+def test_issue_handler_closed_season_does_not_fetch_or_write_streams(monkeypatch, tmp_path: Path):
+    verdict_file = tmp_path / "verdict.md"
+
+    def fail_fetch(repo, issue_number):  # pragma: no cover - called only on regression
+        raise AssertionError("closed seasons must not fetch issue comments")
+
+    monkeypatch.setattr(github_issue_handler, "fetch_issue_comments", fail_fetch)
+    monkeypatch.setenv("COMMENT_BODY", '/cg {"type":"score","player":"late"}')
+    monkeypatch.setenv("COMMENT_AUTHOR", "late-user")
+    monkeypatch.setenv("COMMENT_CREATED_AT", "2026-06-19T00:30:00Z")
+    monkeypatch.setenv("COMMENT_ID", "30")
+    monkeypatch.setenv("ISSUE_NUMBER", "1")
+    monkeypatch.setenv("GH_REPO", "owner/repo")
+    monkeypatch.setenv("CG_ARENA_STATUS", "closed")
+    monkeypatch.setenv("CG_ACTIVE_ARENA_URL", "https://github.com/dueyama/conjecture-golf/issues/2")
+    monkeypatch.setenv("VERDICT_FILE", str(verdict_file))
+    monkeypatch.setenv("CG_CANONICAL_TRANSCRIPT_FILE", str(tmp_path / "canonical.jsonl"))
+    monkeypatch.setenv("CG_QUARANTINE_TRANSCRIPT_FILE", str(tmp_path / "quarantine.jsonl"))
+
+    assert github_issue_handler.main() == 0
+
+    verdict = verdict_file.read_text(encoding="utf-8")
+    assert "season closed" in verdict
+    assert "issues/2" in verdict
+    assert not (tmp_path / "canonical.jsonl").exists()
+    assert not (tmp_path / "quarantine.jsonl").exists()
+
+
+def test_issue_handler_active_season_1_packet_uses_season_spec(monkeypatch, tmp_path: Path):
+    verdict_file = tmp_path / "verdict.md"
+    canonical_file = tmp_path / "canonical.jsonl"
+    quarantine_file = tmp_path / "quarantine.jsonl"
+    decision_file = tmp_path / "routing.json"
+    branch_store = tmp_path / "branch-store"
+
+    monkeypatch.setattr(github_issue_handler, "fetch_issue_comments", lambda repo, issue_number: [])
+    monkeypatch.setenv("COMMENT_BODY", '/cg {"type":"score","player":"observer"}')
+    monkeypatch.setenv("COMMENT_AUTHOR", "observer")
+    monkeypatch.setenv("COMMENT_CREATED_AT", "2026-06-19T00:30:00Z")
+    monkeypatch.setenv("COMMENT_ID", "31")
+    monkeypatch.setenv("ISSUE_NUMBER", "2")
+    monkeypatch.setenv("GH_REPO", "owner/repo")
+    monkeypatch.setenv("CG_SEASON_SPEC", "seasons/season_1.json")
+    monkeypatch.setenv("CG_CANONICAL_BRANCH", "arena/season-1")
+    monkeypatch.setenv("CG_QUARANTINE_BRANCH", "quarantine/season-1")
+    monkeypatch.setenv("VERDICT_FILE", str(verdict_file))
+    monkeypatch.setenv("CG_CANONICAL_TRANSCRIPT_FILE", str(canonical_file))
+    monkeypatch.setenv("CG_QUARANTINE_TRANSCRIPT_FILE", str(quarantine_file))
+    monkeypatch.setenv("CG_ARENA_DECISION_FILE", str(decision_file))
+    monkeypatch.setenv("CG_BRANCH_STORE_DIR", str(branch_store))
+
+    assert github_issue_handler.main() == 0
+
+    verdict = verdict_file.read_text(encoding="utf-8")
+    assert "arena/season-1" in verdict
+    assert '"season_id": "season_1"' in verdict
+    assert '"symbols": [' in verdict
+    assert '"M"' in verdict
+    assert canonical_file.read_text(encoding="utf-8").count("\n") == 1
+    assert (branch_store / "arena" / "season-1" / "transcript.jsonl").exists()

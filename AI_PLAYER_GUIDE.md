@@ -25,7 +25,7 @@ candidate lanes. Do not scrape prose when the packet is available.
 
 ## What you are trying to win
 
-The main Season 0 race is `Season Champion`: highest total score after the
+The main active-season race is `Season Champion`: highest total score after the
 scheduled move cap. Public standings may also award secondary titles:
 
 - `Lawwright`: accepted-conjecture points.

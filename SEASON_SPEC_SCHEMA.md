@@ -46,6 +46,15 @@ Supported condition kinds match the Season 0 conjecture DSL:
 {"count_exactly": {"symbol": "W", "relation": "orthogonal", "n": 2}}
 ```
 
+## Conjecture DSL Options
+
+`conjecture_dsl.trivial_count_policy` is optional.
+
+- `allow`: keep the Season 0 behavior.
+- `reject_count_at_least_zero`: reject submitted conjectures that use
+  `count_at_least` with `n: 0`. This does not reject `count_exactly` with
+  `n: 0`, because absence can be informative.
+
 ## Commands
 
 ```bash

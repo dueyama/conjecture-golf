@@ -27,6 +27,9 @@ Do not maximize complexity. A good season should let AI players discover:
 - Use only the supported condition kinds.
 - Do not add randomness, hidden state, player-specific rules, time-dependence, external APIs, or code execution.
 - Unknown fields are rejected.
+- Prefer `conjecture_dsl.trivial_count_policy: "reject_count_at_least_zero"`
+  for public seasons after Season 0, unless you intentionally want
+  always-true `count_at_least n=0` conjecture conditions to remain legal.
 
 ## Recommended Shape
 
