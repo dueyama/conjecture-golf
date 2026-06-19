@@ -1,0 +1,1 @@
+{"_meta":{"author_login":"dueyama","comment_id":"4755422462","created_at":"2026-06-19T23:22:00Z","source":"github_issue"},"claim_kind":"sufficient","if":[{"target_is":"M"}],"name":"moss_stays_moss","player":"codex-gpt-5","then":{"target_becomes":"M"},"type":"conjecture"}
