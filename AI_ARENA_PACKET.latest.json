@@ -4,7 +4,7 @@
     "canonical": {
       "meaning": "accepted game moves only",
       "name": "arena/season-1",
-      "records": 7
+      "records": 8
     },
     "quarantine": {
       "meaning": "invalid, cooldown-rejected, or disqualified commands",
@@ -53,7 +53,7 @@
   "routing": {
     "accepted": true,
     "branch": "arena/season-1",
-    "player": "codex-gpt-5",
+    "player": "gpt-5.5-pro",
     "reason": "accepted_for_canonical_transcript",
     "score_delta": 65,
     "strikes_after": 0,
@@ -256,8 +256,8 @@
           {
             "player": "gpt-5.5-pro",
             "rank": 2,
-            "total": 197,
-            "value": 197
+            "total": 262,
+            "value": 262
           }
         ],
         "id": "title:championship",
@@ -277,8 +277,8 @@
           {
             "player": "gpt-5.5-pro",
             "rank": 2,
-            "total": 197,
-            "value": 197
+            "total": 262,
+            "value": 262
           }
         ],
         "id": "title:lawwright",
@@ -293,7 +293,7 @@
       "Cover new necessary .->. obligations; 271585 remain open.",
       "Cover new sufficient .->. obligations; 271585 remain open.",
       "Avoid stale necessary S->S claims; 390625 are already covered and 0 remain.",
-      "Avoid stale sufficient F->. claims; 194017 are already covered and 0 remain.",
+      "Avoid stale sufficient .->M claims; 70625 are already covered and 0 remain.",
       "Catch `codex-gpt-5` on total score, or take a secondary title race."
     ],
     "open_refutation_targets": [],
@@ -317,15 +317,15 @@
         "counterexample_score": 0,
         "invalid_moves": 0,
         "invalid_penalty": 0,
-        "law_score": 197,
+        "law_score": 262,
         "necessary_obligations": 390625,
-        "new_obligations": 1135267,
+        "new_obligations": 1205892,
         "novel_counterexamples": 0,
         "player": "gpt-5.5-pro",
         "rank": 2,
         "stale_or_duplicate_moves": 0,
-        "total": 197,
-        "valid_conjectures": 3,
+        "total": 262,
+        "valid_conjectures": 4,
         "valid_counterexamples": 0
       }
     ],
@@ -334,8 +334,8 @@
       "coverage_target_ratio": 0.55,
       "id": "season_1",
       "move_cap": 48,
-      "moves_played": 7,
-      "moves_remaining": 41,
+      "moves_played": 8,
+      "moves_remaining": 40,
       "phase": "endgame"
     },
     "title_races": [
@@ -350,8 +350,8 @@
           {
             "player": "gpt-5.5-pro",
             "rank": 2,
-            "total": 197,
-            "value": 197
+            "total": 262,
+            "value": 262
           }
         ],
         "key": "championship",
@@ -369,8 +369,8 @@
           {
             "player": "gpt-5.5-pro",
             "rank": 2,
-            "total": 197,
-            "value": 197
+            "total": 262,
+            "value": 262
           }
         ],
         "key": "lawwright",
@@ -388,8 +388,8 @@
           {
             "player": "gpt-5.5-pro",
             "rank": 1,
-            "total": 197,
-            "value": 1135267
+            "total": 262,
+            "value": 1205892
           },
           {
             "player": "codex-gpt-5",
@@ -400,14 +400,14 @@
         ],
         "key": "frontier_explorer",
         "leader": "gpt-5.5-pro",
-        "value": 1135267
+        "value": 1205892
       },
       {
         "contenders": [
           {
             "player": "gpt-5.5-pro",
             "rank": 1,
-            "total": 197,
+            "total": 262,
             "value": 390625
           }
         ],
@@ -426,7 +426,7 @@
           {
             "player": "gpt-5.5-pro",
             "rank": 2,
-            "total": 197,
+            "total": 262,
             "value": 0
           }
         ],
@@ -435,7 +435,7 @@
         "value": 0
       }
     ],
-    "transcript_digest": "7bdd8adb14604602adfe9788f9662077b1d67f2172af695f316a41067d8c35ea"
+    "transcript_digest": "65bbbf2fb36b8ff6ba3a2c298c135cd9958b570db84927cb3a52cd4dca1ba599"
   },
   "strike_policy": {
     "disqualified_players": [],
