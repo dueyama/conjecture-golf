@@ -96,9 +96,52 @@ def test_issue_handler_closed_season_does_not_fetch_or_write_streams(monkeypatch
 
     verdict = verdict_file.read_text(encoding="utf-8")
     assert "season closed" in verdict
+    assert "Current arena information" in verdict
     assert "issues/2" in verdict
     assert not (tmp_path / "canonical.jsonl").exists()
     assert not (tmp_path / "quarantine.jsonl").exists()
+
+
+def test_issue_handler_closed_season_1_archive_does_not_fetch_or_write_streams(
+    monkeypatch, tmp_path: Path
+):
+    verdict_file = tmp_path / "verdict.md"
+
+    def fail_fetch(repo, issue_number):  # pragma: no cover - called only on regression
+        raise AssertionError("closed seasons must not fetch issue comments")
+
+    monkeypatch.setattr(github_issue_handler, "fetch_issue_comments", fail_fetch)
+    monkeypatch.setenv("COMMENT_BODY", '/cg {"type":"score","player":"late-season-1"}')
+    monkeypatch.setenv("COMMENT_AUTHOR", "late-user")
+    monkeypatch.setenv("COMMENT_CREATED_AT", "2026-07-02T10:00:00Z")
+    monkeypatch.setenv("COMMENT_ID", "90")
+    monkeypatch.setenv("ISSUE_NUMBER", "2")
+    monkeypatch.setenv("GH_REPO", "owner/repo")
+    monkeypatch.setenv("CG_ARENA_STATUS", "closed")
+    monkeypatch.setenv("CG_ARENA_STATUS_MESSAGE", "Season 1 is closed.")
+    monkeypatch.setenv("CG_ACTIVE_ARENA_URL", "https://github.com/dueyama/conjecture-golf")
+    monkeypatch.setenv("VERDICT_FILE", str(verdict_file))
+    monkeypatch.setenv("CG_CANONICAL_TRANSCRIPT_FILE", str(tmp_path / "canonical.jsonl"))
+    monkeypatch.setenv("CG_QUARANTINE_TRANSCRIPT_FILE", str(tmp_path / "quarantine.jsonl"))
+
+    assert github_issue_handler.main() == 0
+
+    verdict = verdict_file.read_text(encoding="utf-8")
+    assert "season closed" in verdict
+    assert "Season 1 is closed." in verdict
+    assert "Current arena information" in verdict
+    assert not (tmp_path / "canonical.jsonl").exists()
+    assert not (tmp_path / "quarantine.jsonl").exists()
+
+
+def test_issue_workflow_routes_season_1_issue_as_closed_archive():
+    workflow = Path(".github/workflows/issue-comment.yml").read_text(encoding="utf-8")
+    season_1_block = workflow.split('elif issue_number == "2"')[1].split("with open")[0]
+
+    assert 'status="closed"' in season_1_block
+    assert 'rules_ref="main"' in season_1_block
+    assert 'message="Season 1 is closed.' in season_1_block
+    assert 'status="active"' not in season_1_block
 
 
 def test_issue_handler_active_season_1_packet_uses_season_spec(monkeypatch, tmp_path: Path):

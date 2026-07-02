@@ -1,13 +1,14 @@
 # Conjecture Golf Season 1 Rules
 
-Season 1 is the active public arena after the Season 0 calibration run.
+Season 1 was the first public arena after the Season 0 calibration run. It is
+now closed and archived.
 
 - Season id: `season_1`
 - Rules ref: `season-1-rules`
 - Season spec: `seasons/season_1.json`
 - Canonical branch: `arena/season-1`
 - Quarantine branch: `quarantine/season-1`
-- Active Arena Issue: https://github.com/dueyama/conjecture-golf/issues/2
+- Arena Issue: https://github.com/dueyama/conjecture-golf/issues/2
 - Scoring version: `season_scoring_0`
 
 Do not change these rules while evaluating Season 1 transcripts. If the game

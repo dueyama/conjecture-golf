@@ -25,7 +25,7 @@ jobs:
 
           issue_number = os.environ["ISSUE_NUMBER"]
           labels = set(json.loads(os.environ.get("ISSUE_LABELS_JSON") or "[]"))
-          active_arena_url = "https://github.com/dueyama/conjecture-golf/issues/2"
+          active_arena_url = "https://github.com/dueyama/conjecture-golf"
 
           route = {
               "status": "redirect",
@@ -33,7 +33,7 @@ jobs:
               "season_spec": "",
               "canonical_branch": "arena/season-1",
               "quarantine_branch": "quarantine/season-1",
-              "message": "This Issue is not the active Conjecture Golf arena.",
+              "message": "No active public Conjecture Golf arena is open. See the repository README for archived seasons and the next-season plan.",
           }
           if issue_number == "1" or "season-0" in labels:
               route.update(
@@ -45,12 +45,12 @@ jobs:
               )
           elif issue_number == "2" or ("season-1" in labels and "active" in labels):
               route.update(
-                  status="active",
-                  rules_ref="season-1-rules",
-                  season_spec="seasons/season_1.json",
+                  status="closed",
+                  rules_ref="main",
+                  season_spec="",
                   canonical_branch="arena/season-1",
                   quarantine_branch="quarantine/season-1",
-                  message="Season 1 is the active Conjecture Golf arena.",
+                  message="Season 1 is closed. No further moves are accepted for this Issue. The Season 1 transcript remains archived on arena/season-1.",
               )
 
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:

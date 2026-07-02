@@ -33,7 +33,7 @@ from .replay import apply_command, replay_records
 from .season_catalog import load_optional_compiled_season
 
 DEFAULT_MIN_PLAYER_INTERVAL_SECONDS = 6 * 60 * 60
-DEFAULT_ACTIVE_ARENA_URL = "https://github.com/dueyama/conjecture-golf/issues/2"
+DEFAULT_ACTIVE_ARENA_URL = "https://github.com/dueyama/conjecture-golf"
 
 
 def _env_bool(name: str, *, default: bool) -> bool:
@@ -73,13 +73,13 @@ def _status_markdown(status: str, *, active_arena_url: str, message: str = "") -
         return (
             "**Conjecture Golf season closed**\n\n"
             f"{detail}\n\n"
-            f"Current active arena: {active_arena_url}\n"
+            f"Current arena information: {active_arena_url}\n"
         )
     detail = message or "This Issue is not the active Conjecture Golf arena."
     return (
         "**Conjecture Golf arena moved**\n\n"
         f"{detail}\n\n"
-        f"Post new `/cg` moves in the active arena: {active_arena_url}\n"
+        f"Current arena information: {active_arena_url}\n"
     )
 
 

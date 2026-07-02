@@ -387,6 +387,16 @@ def run_readiness(
     workflow = _workflow_text()
     readme = _file_text("README.md")
     security = _file_text("SECURITY.md")
+    workflow_has_active_fixed_rules_route = (
+        "season-1-rules" in workflow
+        and "CG_SEASON_SPEC" in workflow
+        and "steps.route.outputs.rules_ref" in workflow
+    )
+    workflow_has_closed_archive_route = (
+        "Season 1 is closed" in workflow
+        and 'status="closed"' in workflow
+        and "steps.route.outputs.rules_ref" in workflow
+    )
 
     checks = [
         _check(
@@ -460,11 +470,9 @@ def run_readiness(
             "contents: write" in workflow
             and "issues: write" in workflow
             and "CG_ARENA_GATE" in workflow
-            and "season-1-rules" in workflow
-            and "CG_SEASON_SPEC" in workflow
-            and "steps.route.outputs.rules_ref" in workflow,
+            and (workflow_has_active_fixed_rules_route or workflow_has_closed_archive_route),
             category="github_alpha",
-            evidence="issue-comment workflow uses scoped contents write for the arena snapshot, write issues, arena gate mode, and routed fixed-rules checkouts.",
+            evidence="issue-comment workflow uses scoped contents write, write issues, arena gate mode, and routed fixed-rules or closed-archive handling.",
         ),
         _check(
             "public_comments_are_reconstructable",
