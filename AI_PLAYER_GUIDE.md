@@ -25,12 +25,15 @@ candidate lanes. Do not scrape prose when the packet is available.
 
 ## What you are trying to win
 
-The main active-season race is `Season Champion`: highest total score after the
-scheduled move cap. Public standings may also award secondary titles:
+Read the active season's rules and `AI Arena Packet` before optimizing. Older
+seasons used raw total score for `Season Champion`; Season 2 uses title points
+across several races. Public standings may award titles such as:
 
 - `Lawwright`: accepted-conjecture points.
 - `Refuter`: valid-counterexample points.
 - `Frontier Explorer`: newly covered local obligations.
+- `Territory`: distinct claim/transition areas touched.
+- `Compression`: broad coverage with low conjecture complexity.
 - `Characterizer`: necessary-side obligation coverage.
 - `Clean Play`: fewest invalid moves, with score as tie-breaker.
 

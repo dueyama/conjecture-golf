@@ -88,28 +88,41 @@ def _empty_metrics() -> dict[str, int]:
     return {
         "new_obligations": 0,
         "necessary_obligations": 0,
+        "territory_areas": 0,
+        "compression_score": 0,
         "novel_counterexamples": 0,
         "stale_or_duplicate_moves": 0,
+        "title_points": 0,
     }
 
 
 def _player_metrics(verdicts: Iterable[Any]) -> dict[str, dict[str, int]]:
     metrics: dict[str, dict[str, int]] = defaultdict(_empty_metrics)
+    territory_by_player: dict[str, set[str]] = defaultdict(set)
     for verdict in verdicts:
         player = verdict.player or "anonymous"
         details = verdict.details or {}
         basis = details.get("season_score_basis")
         if verdict.kind == "conjecture" and verdict.ok:
-            metrics[player]["new_obligations"] += int(details.get("season_new_obligations") or 0)
+            new_obligations = int(details.get("season_new_obligations") or 0)
+            metrics[player]["new_obligations"] += new_obligations
             counts = details.get("season_new_obligation_counts")
             if isinstance(counts, Mapping):
                 metrics[player]["necessary_obligations"] += int(counts.get("necessary", 0))
+            complexity = max(1, int(details.get("complexity") or 1))
+            metrics[player]["compression_score"] += new_obligations // complexity
+            summary = details.get("season_new_obligation_summary")
+            by_area = summary.get("by_claim_and_transition") if isinstance(summary, Mapping) else None
+            if isinstance(by_area, Mapping):
+                territory_by_player[player].update(str(key) for key, value in by_area.items() if int(value) > 0)
         if verdict.kind == "counterexample" and verdict.ok and basis == "novel_first_counterexample":
             metrics[player]["novel_counterexamples"] += 1
         if basis in {"stale_true_conjecture", "already_countered", "duplicate_witness"}:
             metrics[player]["stale_or_duplicate_moves"] += 1
         if details.get("reason") == "duplicate_conjecture":
             metrics[player]["stale_or_duplicate_moves"] += 1
+    for player, areas in territory_by_player.items():
+        metrics[player]["territory_areas"] = len(areas)
     return dict(metrics)
 
 
@@ -169,6 +182,35 @@ def _race(
     )
 
 
+def _uses_title_points(season: CompiledSeason | None) -> bool:
+    return season is not None and season.spec.competition.victory == "title_points"
+
+
+def _title_point_schedule(season: CompiledSeason | None) -> dict[int, int]:
+    points = season.spec.competition.title_points if season is not None else {"first": 5, "second": 3, "third": 1}
+    return {
+        1: int(points.get("first", 5)),
+        2: int(points.get("second", 3)),
+        3: int(points.get("third", 1)),
+    }
+
+
+def _award_title_points(
+    rows: list[dict[str, Any]],
+    races: list[TitleRace],
+    *,
+    season: CompiledSeason | None,
+) -> list[dict[str, Any]]:
+    by_player = {row["player"]: dict(row, title_points=0) for row in rows}
+    schedule = _title_point_schedule(season)
+    for race in races:
+        for contender in race.contenders:
+            player = contender["player"]
+            if player in by_player:
+                by_player[player]["title_points"] += schedule.get(int(contender["rank"]), 0)
+    return [by_player[row["player"]] for row in rows]
+
+
 def _phase(total_moves: int, move_cap: int, coverage_ratio: float, coverage_target_ratio: float) -> str:
     if total_moves <= 0:
         return "preseason"
@@ -184,7 +226,7 @@ def _phase(total_moves: int, move_cap: int, coverage_ratio: float, coverage_targ
     return "endgame"
 
 
-def _next_objectives(frontier: FrontierReport, rows: list[dict[str, Any]]) -> list[str]:
+def _next_objectives(frontier: FrontierReport, rows: list[dict[str, Any]], *, victory_metric: str = "total") -> list[str]:
     objectives: list[str] = []
     for row in frontier.open_frontier[:3]:
         objectives.append(
@@ -199,9 +241,14 @@ def _next_objectives(frontier: FrontierReport, rows: list[dict[str, Any]]) -> li
         )
     if rows:
         leader = rows[0]
-        objectives.append(
-            f"Catch `{leader['player']}` on total score, or take a secondary title race."
-        )
+        if victory_metric == "title_points":
+            objectives.append(
+                f"Catch `{leader['player']}` on title points, or take a title race they do not control."
+            )
+        else:
+            objectives.append(
+                f"Catch `{leader['player']}` on total score, or take a secondary title race."
+            )
     if not objectives:
         objectives.append("No frontier remains; preserve the transcript and start a new season spec.")
     return objectives
@@ -256,13 +303,7 @@ def build_season_standings_from_state(
     total_moves = len(state.verdicts)
     moves_remaining = max(0, move_cap - total_moves)
     coverage_target_met = frontier.coverage_ratio >= coverage_target_ratio
-    title_races = [
-        _race(
-            key="championship",
-            title="Season Champion",
-            description="Highest total score at the scheduled move cap.",
-            contenders=_rank(title_rows, value_key="total"),
-        ),
+    base_title_races = [
         _race(
             key="lawwright",
             title="Lawwright",
@@ -282,6 +323,18 @@ def build_season_standings_from_state(
             contenders=_rank(title_rows, value_key="new_obligations", require_positive=True),
         ),
         _race(
+            key="territory",
+            title="Territory",
+            description="Most distinct claim/transition areas touched with new obligations.",
+            contenders=_rank(title_rows, value_key="territory_areas", require_positive=True),
+        ),
+        _race(
+            key="compression",
+            title="Compression",
+            description="Most new obligations explained per unit of conjecture complexity.",
+            contenders=_rank(title_rows, value_key="compression_score", require_positive=True),
+        ),
+        _race(
             key="characterizer",
             title="Characterizer",
             description="Most newly covered necessary-side obligations.",
@@ -294,6 +347,38 @@ def build_season_standings_from_state(
             contenders=_rank(title_rows, value_key="invalid_moves", lower_is_better=True),
         ),
     ]
+    if _uses_title_points(season):
+        enriched_rows = _award_title_points(enriched_rows, base_title_races, season=season)
+        enriched_rows = sorted(enriched_rows, key=lambda row: (-row.get("title_points", 0), -row.get("total", 0), row["player"]))
+        title_rows = [row for row in enriched_rows if row["player"] in qualified_players]
+        title_races = [
+            _race(
+                key="championship",
+                title="Season Champion",
+                description="Most title points across Season 2 races, with raw score as the tie-breaker.",
+                contenders=_rank(title_rows, value_key="title_points", require_positive=True),
+            ),
+            *base_title_races,
+        ]
+        victory_rule = (
+            "Season Champion is the qualified title-points leader across Lawwright, Refuter, "
+            "Frontier Explorer, Territory, Compression, Characterizer, and Clean Play. "
+            "Race ranks score 5/3/1 title points; raw score breaks ties."
+        )
+    else:
+        title_races = [
+            _race(
+                key="championship",
+                title="Season Champion",
+                description="Highest total score at the scheduled move cap.",
+                contenders=_rank(title_rows, value_key="total"),
+            ),
+            *base_title_races,
+        ]
+        victory_rule = (
+            f"Season Champion is the qualified total-score leader after {move_cap} public moves. "
+            "Secondary titles keep different strategies live even when the main race separates."
+        )
     display_season_id = season.spec.season_id if season else season_id()
     return SeasonStandings(
         season_id=display_season_id,
@@ -304,10 +389,7 @@ def build_season_standings_from_state(
         season_complete=moves_remaining == 0,
         coverage_target_ratio=coverage_target_ratio,
         coverage_target_met=coverage_target_met,
-        victory_rule=(
-            f"Season Champion is the qualified total-score leader after {move_cap} public moves. "
-            "Secondary titles keep different strategies live even when the main race separates."
-        ),
+        victory_rule=victory_rule,
         leaderboard=enriched_rows,
         qualified_players=sorted(qualified_players),
         unqualified_players=sorted(row["player"] for row in enriched_rows if row["player"] not in qualified_players),
@@ -320,7 +402,11 @@ def build_season_standings_from_state(
             "open_frontier": frontier.open_frontier[:5],
             "stale_traps": frontier.stale_traps[:5],
         },
-        next_objectives=_next_objectives(frontier, enriched_rows),
+        next_objectives=_next_objectives(
+            frontier,
+            enriched_rows,
+            victory_metric="title_points" if _uses_title_points(season) else "total",
+        ),
     )
 
 

@@ -325,6 +325,10 @@ def _obligation_counts(obligations: frozenset[str]) -> dict[str, int]:
     }
 
 
+def _obligation_summary(obligations: frozenset[str]) -> dict[str, Any]:
+    return summarize_obligation_ids(obligations)
+
+
 def _season_adjust_conjecture(
     state: ReplayState,
     verdict: Verdict,
@@ -395,9 +399,12 @@ def _season_adjust_conjecture(
                 **details,
                 "season_new_obligations": 0,
                 "season_new_obligation_counts": new_counts,
+                "season_new_obligation_summary": _obligation_summary(coverage.new_obligations),
                 "season_known_obligations": len(coverage.stale_obligations),
                 "season_known_obligation_counts": stale_counts,
+                "season_known_obligation_summary": _obligation_summary(coverage.stale_obligations),
                 "season_total_obligation_counts": total_counts,
+                "season_total_obligation_summary": _obligation_summary(coverage.obligations),
                 "season_target_value": target_value,
                 "season_score_basis": "stale_true_conjecture",
                 "season_obligation_examples": sorted(coverage.obligations)[:3],
@@ -428,10 +435,13 @@ def _season_adjust_conjecture(
             **details,
             "season_new_obligations": len(coverage.new_obligations),
             "season_new_obligation_counts": new_counts,
+            "season_new_obligation_summary": _obligation_summary(coverage.new_obligations),
             "season_known_obligations": len(coverage.stale_obligations),
             "season_known_obligation_counts": stale_counts,
+            "season_known_obligation_summary": _obligation_summary(coverage.stale_obligations),
             "season_total_obligations": len(coverage.obligations),
             "season_total_obligation_counts": total_counts,
+            "season_total_obligation_summary": _obligation_summary(coverage.obligations),
             "season_score_basis": "new_obligations",
             "season_novelty_bonus": novelty_bonus,
             "season_target_value": target_value,

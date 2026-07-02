@@ -48,6 +48,24 @@ TRIVIAL_COUNT_NECESSARY = {
     "then": {"target_becomes": "W"},
 }
 
+MOSS_NECESSARY_WITH_ANY_OF = {
+    "player": "territory",
+    "name": "moss_result_is_old_moss_or_new_growth",
+    "claim_kind": "necessary",
+    "if": [
+        {
+            "any_of": [
+                [{"target_is": "M"}],
+                [
+                    {"target_is": "."},
+                    {"count_at_least": {"symbol": "S", "relation": "orthogonal", "n": 2}},
+                ],
+            ]
+        }
+    ],
+    "then": {"target_becomes": "M"},
+}
+
 
 def test_true_conjecture_holds_exhaustive_local():
     verdict = verify_conjecture(TRUE_CONJECTURE)
@@ -70,6 +88,36 @@ def test_season_1_rejects_count_at_least_zero_conjecture_guard():
 
     assert not verdict.ok
     assert "count_at_least with n=0" in verdict.message
+
+
+def test_season_1_rejects_any_of_before_season_2():
+    season = load_compiled_season("seasons/season_1.json")
+    verdict = verify_conjecture(MOSS_NECESSARY_WITH_ANY_OF, season=season)
+
+    assert not verdict.ok
+    assert "unknown condition kind: any_of" in verdict.message
+
+
+def test_season_2_accepts_bounded_any_of_for_necessary_claim():
+    season = load_compiled_season("seasons/season_2.json")
+    verdict = verify_conjecture(MOSS_NECESSARY_WITH_ANY_OF, season=season)
+
+    assert verdict.ok
+    assert verdict.details["season_id"] == "season_2"
+    assert verdict.details["coverage"] > 0
+
+
+def test_season_2_rejects_nested_any_of():
+    season = load_compiled_season("seasons/season_2.json")
+    nested = {
+        **MOSS_NECESSARY_WITH_ANY_OF,
+        "name": "nested_any_of_is_invalid",
+        "if": [{"any_of": [[{"any_of": [[{"target_is": "M"}]]}]]}],
+    }
+    verdict = verify_conjecture(nested, season=season)
+
+    assert not verdict.ok
+    assert "any_of may not be nested" in verdict.message
 
 
 def test_season_0_allows_count_at_least_zero_for_archive_replay():

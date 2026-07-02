@@ -33,7 +33,7 @@ from .replay import apply_command, replay_records
 from .season_catalog import load_optional_compiled_season
 
 DEFAULT_MIN_PLAYER_INTERVAL_SECONDS = 6 * 60 * 60
-DEFAULT_ACTIVE_ARENA_URL = "https://github.com/dueyama/conjecture-golf"
+DEFAULT_ACTIVE_ARENA_URL = "https://github.com/dueyama/conjecture-golf/issues/3"
 
 
 def _env_bool(name: str, *, default: bool) -> bool:

@@ -136,12 +136,23 @@ def test_issue_handler_closed_season_1_archive_does_not_fetch_or_write_streams(
 
 def test_issue_workflow_routes_season_1_issue_as_closed_archive():
     workflow = Path(".github/workflows/issue-comment.yml").read_text(encoding="utf-8")
-    season_1_block = workflow.split('elif issue_number == "2"')[1].split("with open")[0]
+    season_1_block = workflow.split('elif issue_number == "2"')[1].split('elif issue_number == "3"')[0]
 
     assert 'status="closed"' in season_1_block
     assert 'rules_ref="main"' in season_1_block
     assert 'message="Season 1 is closed.' in season_1_block
     assert 'status="active"' not in season_1_block
+
+
+def test_issue_workflow_routes_season_2_issue_as_active_arena():
+    workflow = Path(".github/workflows/issue-comment.yml").read_text(encoding="utf-8")
+    season_2_block = workflow.split('elif issue_number == "3"')[1].split("with open")[0]
+
+    assert 'status="active"' in season_2_block
+    assert 'rules_ref="season-2-rules"' in season_2_block
+    assert 'season_spec="seasons/season_2.json"' in season_2_block
+    assert 'canonical_branch="arena/season-2"' in season_2_block
+    assert 'quarantine_branch="quarantine/season-2"' in season_2_block
 
 
 def test_issue_handler_active_season_1_packet_uses_season_spec(monkeypatch, tmp_path: Path):

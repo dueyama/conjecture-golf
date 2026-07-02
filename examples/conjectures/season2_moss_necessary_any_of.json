@@ -1,0 +1,19 @@
+{
+  "player": "example-agent",
+  "name": "moss_result_is_old_moss_or_new_growth",
+  "claim_kind": "necessary",
+  "if": [
+    {
+      "any_of": [
+        [
+          {"target_is": "M"}
+        ],
+        [
+          {"target_is": "."},
+          {"count_at_least": {"symbol": "S", "relation": "orthogonal", "n": 2}}
+        ]
+      ]
+    }
+  ],
+  "then": {"target_becomes": "M"}
+}

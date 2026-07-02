@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 from collections.abc import Mapping, Sequence
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -13,9 +13,11 @@ from .world import ValidationError, canonical_test_boards
 
 SCHEMA_VERSION = "season-spec-v0.1"
 ALLOWED_RELATIONS = {"orthogonal", "diagonal", "king"}
-ALLOWED_CONDITION_KINDS = {"target_is", "exists", "not_exists", "count_at_least", "count_exactly"}
+PRIMITIVE_CONDITION_KINDS = {"target_is", "exists", "not_exists", "count_at_least", "count_exactly"}
+ALLOWED_CONDITION_KINDS = PRIMITIVE_CONDITION_KINDS | {"any_of"}
 ALLOWED_CLAIM_KINDS = {"sufficient", "necessary", "equivalence"}
 ALLOWED_TRIVIAL_COUNT_POLICIES = {"allow", "reject_count_at_least_zero"}
+ALLOWED_VICTORY_RULES = {"total_score", "title_points"}
 REQUIRED_TOP_LEVEL_KEYS = {
     "schema_version",
     "season_id",
@@ -30,7 +32,7 @@ REQUIRED_TOP_LEVEL_KEYS = {
     "presentation",
     "limits",
 }
-ALLOWED_TOP_LEVEL_KEYS = REQUIRED_TOP_LEVEL_KEYS
+ALLOWED_TOP_LEVEL_KEYS = REQUIRED_TOP_LEVEL_KEYS | {"competition"}
 
 
 @dataclass(frozen=True)
@@ -64,6 +66,14 @@ class ConjectureDslSpec:
     condition_kinds: tuple[str, ...]
     max_conditions: int
     trivial_count_policy: str = "allow"
+    max_any_of_branches: int = 0
+    max_any_of_branch_conditions: int = 0
+
+
+@dataclass(frozen=True)
+class CompetitionSpec:
+    victory: str = "total_score"
+    title_points: dict[str, int] = field(default_factory=lambda: {"first": 5, "second": 3, "third": 1})
 
 
 @dataclass(frozen=True)
@@ -93,6 +103,7 @@ class SeasonSpec:
     relations: tuple[str, ...]
     rules: tuple[TransitionRule, ...]
     conjecture_dsl: ConjectureDslSpec
+    competition: CompetitionSpec
     presentation: PresentationSpec
     limits: LimitsSpec
     raw: dict[str, Any]
@@ -293,6 +304,9 @@ def _parse_condition(
     symbols: set[str],
     relations: set[str],
     allowed_condition_kinds: set[str],
+    max_any_of_branches: int = 0,
+    max_any_of_branch_conditions: int = 0,
+    allow_any_of: bool = True,
     errors: list[SeasonSpecIssue],
 ) -> dict[str, Any] | None:
     raw = _as_mapping(value, path, errors, code="UNKNOWN_CONDITION_KIND")
@@ -305,6 +319,46 @@ def _parse_condition(
     if key not in ALLOWED_CONDITION_KINDS or key not in allowed_condition_kinds:
         errors.append(_issue("UNKNOWN_CONDITION_KIND", f"unknown condition kind: {key}", f"{path}.{key}"))
         return None
+    if key == "any_of":
+        if not allow_any_of:
+            errors.append(_issue("INVALID_DSL", "any_of may not be nested", f"{path}.{key}"))
+            return None
+        branches = raw[key]
+        if not isinstance(branches, list) or not branches:
+            errors.append(_issue("INVALID_DSL", "any_of must be a non-empty list of condition lists", f"{path}.{key}"))
+            return None
+        if max_any_of_branches <= 0:
+            errors.append(_issue("INVALID_DSL", "any_of is not enabled by this season", f"{path}.{key}"))
+            return None
+        if len(branches) > max_any_of_branches:
+            errors.append(_issue("TOO_MANY_CONDITIONS", "any_of has too many branches", f"{path}.{key}"))
+        normalized_branches: list[list[dict[str, Any]]] = []
+        primitive_condition_kinds = set(allowed_condition_kinds) - {"any_of"}
+        for branch_index, branch in enumerate(branches):
+            branch_path = f"{path}.{key}[{branch_index}]"
+            if not isinstance(branch, list) or not branch:
+                errors.append(_issue("INVALID_DSL", "any_of branch must be a non-empty condition list", branch_path))
+                continue
+            if len(branch) > max_any_of_branch_conditions:
+                errors.append(_issue("TOO_MANY_CONDITIONS", "any_of branch has too many conditions", branch_path))
+            normalized_branch: list[dict[str, Any]] = []
+            for condition_index, condition in enumerate(branch):
+                normalized = _parse_condition(
+                    condition,
+                    path=f"{branch_path}[{condition_index}]",
+                    symbols=symbols,
+                    relations=relations,
+                    allowed_condition_kinds=primitive_condition_kinds,
+                    max_any_of_branches=max_any_of_branches,
+                    max_any_of_branch_conditions=max_any_of_branch_conditions,
+                    allow_any_of=False,
+                    errors=errors,
+                )
+                if normalized is not None:
+                    normalized_branch.append(normalized)
+            if normalized_branch:
+                normalized_branches.append(normalized_branch)
+        return {"any_of": normalized_branches}
     if key == "target_is":
         symbol = raw[key]
         if symbol not in symbols:
@@ -338,13 +392,13 @@ def _parse_dsl(data: Mapping[str, Any], errors: list[SeasonSpecIssue]) -> Conjec
     raw = _as_mapping(data.get("conjecture_dsl"), "conjecture_dsl", errors)
     default = ConjectureDslSpec(
         claim_kinds=tuple(sorted(ALLOWED_CLAIM_KINDS)),
-        condition_kinds=tuple(sorted(ALLOWED_CONDITION_KINDS)),
+        condition_kinds=tuple(sorted(PRIMITIVE_CONDITION_KINDS)),
         max_conditions=6,
     )
     if raw is None:
         return default
     required = {"claim_kinds", "condition_kinds", "max_conditions"}
-    optional = {"trivial_count_policy"}
+    optional = {"trivial_count_policy", "max_any_of_branches", "max_any_of_branch_conditions"}
     _unknown_fields(raw, allowed=required | optional, path="conjecture_dsl", errors=errors)
     _missing_fields(raw, required=required, path="conjecture_dsl", errors=errors)
     claim_kinds_raw = raw.get("claim_kinds", [])
@@ -379,12 +433,91 @@ def _parse_dsl(data: Mapping[str, Any], errors: list[SeasonSpecIssue]) -> Conjec
             )
         )
         trivial_count_policy = default.trivial_count_policy
+    any_of_enabled = "any_of" in set(condition_kinds)
+    default_branches = 3 if any_of_enabled else 0
+    default_branch_conditions = 4 if any_of_enabled else 0
+    max_any_of_branches = _int_value(
+        raw.get("max_any_of_branches", default_branches),
+        "conjecture_dsl.max_any_of_branches",
+        errors,
+        code="INVALID_DSL",
+    )
+    max_any_of_branch_conditions = _int_value(
+        raw.get("max_any_of_branch_conditions", default_branch_conditions),
+        "conjecture_dsl.max_any_of_branch_conditions",
+        errors,
+        code="INVALID_DSL",
+    )
+    if any_of_enabled and not (2 <= max_any_of_branches <= 3):
+        errors.append(_issue("INVALID_DSL", "max_any_of_branches must be from 2 to 3", "conjecture_dsl.max_any_of_branches"))
+        max_any_of_branches = default_branches
+    if any_of_enabled and not (1 <= max_any_of_branch_conditions <= 4):
+        errors.append(
+            _issue(
+                "INVALID_DSL",
+                "max_any_of_branch_conditions must be from 1 to 4",
+                "conjecture_dsl.max_any_of_branch_conditions",
+            )
+        )
+        max_any_of_branch_conditions = default_branch_conditions
+    if not any_of_enabled and (max_any_of_branches or max_any_of_branch_conditions):
+        errors.append(_issue("INVALID_DSL", "any_of limits require condition_kinds to include any_of", "conjecture_dsl.condition_kinds"))
+        max_any_of_branches = 0
+        max_any_of_branch_conditions = 0
     return ConjectureDslSpec(
         claim_kinds=claim_kinds,
         condition_kinds=condition_kinds,
         max_conditions=max_conditions,
         trivial_count_policy=str(trivial_count_policy),
+        max_any_of_branches=max_any_of_branches,
+        max_any_of_branch_conditions=max_any_of_branch_conditions,
     )
+
+
+def _parse_competition(data: Mapping[str, Any], errors: list[SeasonSpecIssue]) -> CompetitionSpec:
+    raw = data.get("competition")
+    if raw is None:
+        return CompetitionSpec()
+    mapping = _as_mapping(raw, "competition", errors)
+    if mapping is None:
+        return CompetitionSpec()
+    required = {"victory"}
+    optional = {"title_points"}
+    _unknown_fields(mapping, allowed=required | optional, path="competition", errors=errors)
+    _missing_fields(mapping, required=required, path="competition", errors=errors)
+    victory = mapping.get("victory", "total_score")
+    if victory not in ALLOWED_VICTORY_RULES:
+        errors.append(
+            _issue(
+                "INVALID_FIELD",
+                f"competition.victory must be one of {sorted(ALLOWED_VICTORY_RULES)}",
+                "competition.victory",
+            )
+        )
+        victory = "total_score"
+    title_points = {"first": 5, "second": 3, "third": 1}
+    raw_points = mapping.get("title_points")
+    if raw_points is not None:
+        points = _as_mapping(raw_points, "competition.title_points", errors)
+        if points is not None:
+            required_points = {"first", "second", "third"}
+            _unknown_fields(points, allowed=required_points, path="competition.title_points", errors=errors)
+            _missing_fields(points, required=required_points, path="competition.title_points", errors=errors)
+            parsed_points = {
+                key: _int_value(points.get(key, title_points[key]), f"competition.title_points.{key}", errors)
+                for key in required_points
+            }
+            if not (parsed_points["first"] > parsed_points["second"] > parsed_points["third"] > 0):
+                errors.append(
+                    _issue(
+                        "INVALID_FIELD",
+                        "title points must satisfy first > second > third > 0",
+                        "competition.title_points",
+                    )
+                )
+            else:
+                title_points = parsed_points
+    return CompetitionSpec(victory=str(victory), title_points=title_points)
 
 
 def _parse_transition(
@@ -393,6 +526,7 @@ def _parse_transition(
     symbols: set[str],
     relations: set[str],
     condition_kinds: set[str],
+    dsl: ConjectureDslSpec,
     limits: LimitsSpec,
     errors: list[SeasonSpecIssue],
 ) -> tuple[TransitionRule, ...]:
@@ -451,6 +585,8 @@ def _parse_transition(
                 symbols=symbols,
                 relations=relations,
                 allowed_condition_kinds=condition_kinds,
+                max_any_of_branches=dsl.max_any_of_branches,
+                max_any_of_branch_conditions=dsl.max_any_of_branch_conditions,
                 errors=errors,
             )
             if normalized is not None:
@@ -497,9 +633,11 @@ def validate_season_spec(data: Any) -> SeasonSpecValidationResult:
         symbols=symbol_set,
         relations=relation_set,
         condition_kinds=set(dsl.condition_kinds),
+        dsl=dsl,
         limits=limits,
         errors=errors,
     )
+    competition = _parse_competition(root, errors)
     presentation = _parse_presentation(root, errors)
 
     spec = SeasonSpec(
@@ -514,6 +652,7 @@ def validate_season_spec(data: Any) -> SeasonSpecValidationResult:
         relations=relations,
         rules=rules,
         conjecture_dsl=dsl,
+        competition=competition,
         presentation=presentation,
         limits=limits,
         raw=dict(root),

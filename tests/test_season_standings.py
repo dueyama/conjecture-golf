@@ -66,6 +66,37 @@ def test_season_standings_can_use_explicit_season_spec():
     assert standings.frontier["total_obligations"] > 0
 
 
+def test_season_2_standings_use_title_points_victory():
+    season = load_compiled_season("seasons/season_2.json")
+    records = [
+        {
+            "type": "conjecture",
+            "player": "codex-gpt-5",
+            "name": "moss_stays_moss",
+            "claim_kind": "sufficient",
+            "if": [{"target_is": "M"}],
+            "then": {"target_becomes": "M"},
+        },
+        {
+            "type": "conjecture",
+            "player": "gpt-5.5-pro",
+            "name": "stone_is_exactly_persistent_s2",
+            "claim_kind": "equivalence",
+            "if": [{"target_is": "S"}],
+            "then": {"target_becomes": "S"},
+        },
+    ]
+
+    standings = build_season_standings(records, season=season)
+    data = standings.to_dict()
+    races = {race["key"]: race for race in data["title_races"]}
+
+    assert "title-points" in data["victory_rule"]
+    assert data["leaderboard"][0]["title_points"] > 0
+    assert races["championship"]["contenders"][0]["value"] == data["leaderboard"][0]["title_points"]
+    assert {"territory", "compression"} <= set(races)
+
+
 def test_render_standings_markdown_mentions_title_races():
     standings = build_season_standings(iter_jsonl("examples/transcripts/basic.jsonl"), move_cap=8)
 

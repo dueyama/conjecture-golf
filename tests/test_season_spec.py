@@ -16,6 +16,7 @@ def _error_codes(spec):
 def test_valid_bundled_specs_load():
     assert load_season_spec("seasons/season_0.json").season_id == "season_0"
     assert load_season_spec("seasons/season_1.json").season_id == "season_1"
+    assert load_season_spec("seasons/season_2.json").season_id == "season_2"
     assert load_season_spec("seasons/candidates/season_1_moss_candidate.json").season_id == "season_1_moss_candidate"
 
 
@@ -99,6 +100,33 @@ def test_trivial_count_policy_is_validated():
     bad = _base_spec()
     bad["conjecture_dsl"]["trivial_count_policy"] = "surprise"
     assert "INVALID_DSL" in _error_codes(bad)
+
+
+def test_any_of_dsl_limits_are_validated():
+    spec = _base_spec()
+    spec["conjecture_dsl"]["condition_kinds"].append("any_of")
+    spec["conjecture_dsl"]["max_any_of_branches"] = 3
+    spec["conjecture_dsl"]["max_any_of_branch_conditions"] = 4
+    assert "INVALID_DSL" not in _error_codes(spec)
+
+    bad = _base_spec()
+    bad["conjecture_dsl"]["condition_kinds"].append("any_of")
+    bad["conjecture_dsl"]["max_any_of_branches"] = 99
+    bad["conjecture_dsl"]["max_any_of_branch_conditions"] = 4
+    assert "INVALID_DSL" in _error_codes(bad)
+
+
+def test_competition_title_points_are_validated():
+    spec = _base_spec()
+    spec["competition"] = {
+        "victory": "title_points",
+        "title_points": {"first": 5, "second": 3, "third": 1},
+    }
+    assert "INVALID_FIELD" not in _error_codes(spec)
+
+    bad = _base_spec()
+    bad["competition"] = {"victory": "surprise"}
+    assert "INVALID_FIELD" in _error_codes(bad)
 
 
 def test_season_spec_cli_lint_render_smoke(capsys):

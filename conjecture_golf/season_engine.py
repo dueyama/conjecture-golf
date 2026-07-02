@@ -69,6 +69,8 @@ class CompiledSeason:
     def evaluate_condition(self, board: Sequence[str], row: int, col: int, condition: Mapping[str, Any]) -> bool:
         key = next(iter(condition))
         value = condition[key]
+        if key == "any_of":
+            return any(self.evaluate_conditions(board, row, col, branch) for branch in value)
         if key == "target_is":
             return board[row][col] == value
 
@@ -196,12 +198,7 @@ class CompiledSeason:
         normalized = self.validate_conjecture(conjecture)
         cost = 0
         for condition in normalized["if"]:
-            kind = next(iter(condition))
-            cost += 1
-            if kind in {"exists", "not_exists", "count_at_least", "count_exactly"}:
-                cost += 1
-            if kind in {"count_at_least", "count_exactly"}:
-                cost += 1
+            cost += self._condition_complexity(condition)
         claim_kind = normalized.get("claim_kind", "sufficient")
         if claim_kind == "necessary":
             cost += 1
@@ -209,20 +206,54 @@ class CompiledSeason:
             cost += 2
         return cost + 1
 
+    def _condition_complexity(self, condition: Mapping[str, Any]) -> int:
+        kind = next(iter(condition))
+        if kind == "any_of":
+            branches = condition[kind]
+            branch_cost = sum(sum(self._condition_complexity(item) for item in branch) for branch in branches)
+            return 2 + len(branches) + branch_cost
+        cost = 1
+        if kind in {"exists", "not_exists", "count_at_least", "count_exactly"}:
+            cost += 1
+        if kind in {"count_at_least", "count_exactly"}:
+            cost += 1
+        return cost
+
     def conjecture_antecedent_matches(self, conjecture: Mapping[str, Any], board: Sequence[str], row: int, col: int) -> bool:
         normalized = self.validate_conjecture(conjecture)
         board = self.validate_board(list(board))
         return self.evaluate_conditions(board, row, col, normalized["if"])
 
-    def _validate_condition(self, condition: Any) -> dict[str, Any]:
+    def _validate_condition(self, condition: Any, *, allow_any_of: bool = True) -> dict[str, Any]:
         if not isinstance(condition, Mapping):
             raise ValidationError("condition must be an object")
         raw = dict(condition)
         if len(raw) != 1:
             raise ValidationError("each condition must contain exactly one condition kind")
         key = next(iter(raw))
+        if key == "any_of" and not allow_any_of:
+            raise ValidationError("any_of may not be nested")
+        return self._validate_condition_body(raw)
+
+    def _validate_condition_body(self, raw: Mapping[str, Any]) -> dict[str, Any]:
+        key = next(iter(raw))
         if key not in self.spec.conjecture_dsl.condition_kinds:
             raise ValidationError(f"unknown condition kind: {key}")
+        if key == "any_of":
+            branches = raw[key]
+            if not isinstance(branches, list) or not branches:
+                raise ValidationError("any_of must be a non-empty list of condition lists")
+            if len(branches) > self.spec.conjecture_dsl.max_any_of_branches:
+                raise ValidationError("any_of has too many branches")
+            normalized_branches: list[list[dict[str, Any]]] = []
+            for branch in branches:
+                if not isinstance(branch, list) or not branch:
+                    raise ValidationError("any_of branch must be a non-empty condition list")
+                if len(branch) > self.spec.conjecture_dsl.max_any_of_branch_conditions:
+                    raise ValidationError("any_of branch has too many conditions")
+                normalized_branch = [self._validate_condition(item, allow_any_of=False) for item in branch]
+                normalized_branches.append(normalized_branch)
+            return {"any_of": normalized_branches}
         if key == "target_is":
             symbol = raw[key]
             if symbol not in self.symbol_set:

@@ -76,6 +76,9 @@ def _player_vectors(standings: SeasonStandings) -> list[dict[str, Any]]:
                 "invalid_moves": int(row.get("invalid_moves", 0)),
                 "new_obligations": int(row.get("new_obligations", 0)),
                 "necessary_obligations": int(row.get("necessary_obligations", 0)),
+                "territory_areas": int(row.get("territory_areas", 0)),
+                "compression_score": int(row.get("compression_score", 0)),
+                "title_points": int(row.get("title_points", 0)),
                 "novel_counterexamples": int(row.get("novel_counterexamples", 0)),
                 "stale_or_duplicate_moves": int(row.get("stale_or_duplicate_moves", 0)),
             }
