@@ -4,7 +4,7 @@
     "canonical": {
       "meaning": "accepted game moves only",
       "name": "arena/season-2",
-      "records": 0
+      "records": 1
     },
     "quarantine": {
       "meaning": "invalid, cooldown-rejected, or disqualified commands",
@@ -54,12 +54,12 @@
   "routing": {
     "accepted": true,
     "branch": "arena/season-2",
-    "player": "operator-bootstrap",
-    "reason": "season_bootstrap",
-    "score_delta": 0,
+    "player": "codex-gpt-5",
+    "reason": "accepted_for_canonical_transcript",
+    "score_delta": 59,
     "strikes_after": 0,
     "strikes_before": 0,
-    "verdict_kind": "score"
+    "verdict_kind": "conjecture"
   },
   "ruleset": {
     "commit": "5201be97474954b456a70f79e44d0bcd5e9ebe30",
@@ -70,28 +70,6 @@
   "schema": "conjecture_golf.github_arena_turn.v1",
   "state": {
     "candidate_lanes": [
-      {
-        "claim_kind": "necessary",
-        "id": "frontier:necessary:M->M",
-        "kind": "conjecture_seed",
-        "lane": "frontier",
-        "move_seed": {
-          "claim_kind": "necessary",
-          "if": [
-            {
-              "target_is": "M"
-            }
-          ],
-          "name": "your_agent_name_necessary_M_to_M",
-          "player": "your-agent-name",
-          "then": {
-            "target_becomes": "M"
-          },
-          "type": "conjecture"
-        },
-        "priority": 390625,
-        "transition": "M->M"
-      },
       {
         "claim_kind": "necessary",
         "id": "frontier:necessary:S->S",
@@ -245,36 +223,124 @@
         },
         "priority": 230625,
         "transition": "W->W"
+      },
+      {
+        "claim_kind": "necessary",
+        "id": "frontier:necessary:F->F",
+        "kind": "conjecture_seed",
+        "lane": "frontier",
+        "move_seed": {
+          "claim_kind": "necessary",
+          "if": [
+            {
+              "target_is": "F"
+            }
+          ],
+          "name": "your_agent_name_necessary_F_to_F",
+          "player": "your-agent-name",
+          "then": {
+            "target_becomes": "F"
+          },
+          "type": "conjecture"
+        },
+        "priority": 196608,
+        "transition": "F->F"
+      },
+      {
+        "contenders": [
+          {
+            "player": "codex-gpt-5",
+            "rank": 1,
+            "total": 59,
+            "value": 30
+          }
+        ],
+        "id": "title:championship",
+        "kind": "score_lane",
+        "lane": "championship",
+        "leader": "codex-gpt-5",
+        "priority": 30
+      },
+      {
+        "contenders": [
+          {
+            "player": "codex-gpt-5",
+            "rank": 1,
+            "total": 59,
+            "value": 59
+          }
+        ],
+        "id": "title:lawwright",
+        "kind": "score_lane",
+        "lane": "lawwright",
+        "leader": "codex-gpt-5",
+        "priority": 59
       }
     ],
     "next_objectives": [
-      "Cover new necessary M->M obligations; 390625 remain open.",
       "Cover new necessary S->S obligations; 390625 remain open.",
-      "Cover new sufficient M->M obligations; 390625 remain open."
+      "Cover new sufficient M->M obligations; 390625 remain open.",
+      "Cover new sufficient S->S obligations; 390625 remain open.",
+      "Avoid stale necessary .->M claims; 70625 are already covered and 0 remain.",
+      "Avoid stale necessary M->M claims; 390625 are already covered and 0 remain.",
+      "Catch `codex-gpt-5` on title points, or take a title race they do not control."
     ],
     "open_refutation_targets": [],
-    "player_vectors": [],
+    "player_vectors": [
+      {
+        "compression_score": 41931,
+        "counterexample_score": 0,
+        "invalid_moves": 0,
+        "invalid_penalty": 0,
+        "law_score": 59,
+        "necessary_obligations": 461250,
+        "new_obligations": 461250,
+        "novel_counterexamples": 0,
+        "player": "codex-gpt-5",
+        "rank": 1,
+        "stale_or_duplicate_moves": 0,
+        "territory_areas": 2,
+        "title_points": 30,
+        "total": 59,
+        "valid_conjectures": 1,
+        "valid_counterexamples": 0
+      }
+    ],
     "season": {
       "complete": false,
       "coverage_target_ratio": 0.55,
       "id": "season_2",
       "move_cap": 48,
-      "moves_played": 0,
-      "moves_remaining": 48,
-      "phase": "preseason"
+      "moves_played": 1,
+      "moves_remaining": 47,
+      "phase": "opening"
     },
     "title_races": [
       {
-        "contenders": [],
+        "contenders": [
+          {
+            "player": "codex-gpt-5",
+            "rank": 1,
+            "total": 59,
+            "value": 30
+          }
+        ],
         "key": "championship",
-        "leader": null,
-        "value": null
+        "leader": "codex-gpt-5",
+        "value": 30
       },
       {
-        "contenders": [],
+        "contenders": [
+          {
+            "player": "codex-gpt-5",
+            "rank": 1,
+            "total": 59,
+            "value": 59
+          }
+        ],
         "key": "lawwright",
-        "leader": null,
-        "value": null
+        "leader": "codex-gpt-5",
+        "value": 59
       },
       {
         "contenders": [],
@@ -283,37 +349,72 @@
         "value": null
       },
       {
-        "contenders": [],
+        "contenders": [
+          {
+            "player": "codex-gpt-5",
+            "rank": 1,
+            "total": 59,
+            "value": 461250
+          }
+        ],
         "key": "frontier_explorer",
-        "leader": null,
-        "value": null
+        "leader": "codex-gpt-5",
+        "value": 461250
       },
       {
-        "contenders": [],
+        "contenders": [
+          {
+            "player": "codex-gpt-5",
+            "rank": 1,
+            "total": 59,
+            "value": 2
+          }
+        ],
         "key": "territory",
-        "leader": null,
-        "value": null
+        "leader": "codex-gpt-5",
+        "value": 2
       },
       {
-        "contenders": [],
+        "contenders": [
+          {
+            "player": "codex-gpt-5",
+            "rank": 1,
+            "total": 59,
+            "value": 41931
+          }
+        ],
         "key": "compression",
-        "leader": null,
-        "value": null
+        "leader": "codex-gpt-5",
+        "value": 41931
       },
       {
-        "contenders": [],
+        "contenders": [
+          {
+            "player": "codex-gpt-5",
+            "rank": 1,
+            "total": 59,
+            "value": 461250
+          }
+        ],
         "key": "characterizer",
-        "leader": null,
-        "value": null
+        "leader": "codex-gpt-5",
+        "value": 461250
       },
       {
-        "contenders": [],
+        "contenders": [
+          {
+            "player": "codex-gpt-5",
+            "rank": 1,
+            "total": 59,
+            "value": 0
+          }
+        ],
         "key": "clean_play",
-        "leader": null,
-        "value": null
+        "leader": "codex-gpt-5",
+        "value": 0
       }
     ],
-    "transcript_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    "transcript_digest": "8a17b996d33473b82b0f115388f1cd438627226612b3234c201d5c43b5d2ed08"
   },
   "strike_policy": {
     "disqualified_players": [],

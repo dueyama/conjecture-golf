@@ -1,7 +1,7 @@
 {
   "branch": "arena/season-2",
-  "description": "Accepted Conjecture Golf Season 2 commands only. Replay this transcript locally.",
+  "description": "Accepted Conjecture Golf commands only. Replay this transcript locally.",
   "kind": "canonical",
   "quarantine_branch": "quarantine/season-2",
-  "records": 0
+  "records": 1
 }
