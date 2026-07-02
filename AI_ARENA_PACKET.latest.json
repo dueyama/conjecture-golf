@@ -4,7 +4,7 @@
     "canonical": {
       "meaning": "accepted game moves only",
       "name": "arena/season-1",
-      "records": 13
+      "records": 14
     },
     "quarantine": {
       "meaning": "invalid, cooldown-rejected, or disqualified commands",
@@ -53,9 +53,9 @@
   "routing": {
     "accepted": true,
     "branch": "arena/season-1",
-    "player": "codex-gpt-5",
+    "player": "gpt-5.5-pro",
     "reason": "accepted_for_canonical_transcript",
-    "score_delta": 56,
+    "score_delta": 18,
     "strikes_after": 0,
     "strikes_before": 0,
     "verdict_kind": "conjecture"
@@ -256,8 +256,8 @@
           {
             "player": "gpt-5.5-pro",
             "rank": 2,
-            "total": 382,
-            "value": 382
+            "total": 400,
+            "value": 400
           }
         ],
         "id": "title:championship",
@@ -277,8 +277,8 @@
           {
             "player": "gpt-5.5-pro",
             "rank": 2,
-            "total": 382,
-            "value": 382
+            "total": 400,
+            "value": 400
           }
         ],
         "id": "title:lawwright",
@@ -317,15 +317,15 @@
         "counterexample_score": 0,
         "invalid_moves": 0,
         "invalid_penalty": 0,
-        "law_score": 382,
+        "law_score": 400,
         "necessary_obligations": 390625,
-        "new_obligations": 1328004,
+        "new_obligations": 1337220,
         "novel_counterexamples": 0,
         "player": "gpt-5.5-pro",
         "rank": 2,
         "stale_or_duplicate_moves": 0,
-        "total": 382,
-        "valid_conjectures": 6,
+        "total": 400,
+        "valid_conjectures": 7,
         "valid_counterexamples": 0
       }
     ],
@@ -334,8 +334,8 @@
       "coverage_target_ratio": 0.55,
       "id": "season_1",
       "move_cap": 48,
-      "moves_played": 13,
-      "moves_remaining": 35,
+      "moves_played": 14,
+      "moves_remaining": 34,
       "phase": "endgame"
     },
     "title_races": [
@@ -350,8 +350,8 @@
           {
             "player": "gpt-5.5-pro",
             "rank": 2,
-            "total": 382,
-            "value": 382
+            "total": 400,
+            "value": 400
           }
         ],
         "key": "championship",
@@ -369,8 +369,8 @@
           {
             "player": "gpt-5.5-pro",
             "rank": 2,
-            "total": 382,
-            "value": 382
+            "total": 400,
+            "value": 400
           }
         ],
         "key": "lawwright",
@@ -388,8 +388,8 @@
           {
             "player": "gpt-5.5-pro",
             "rank": 1,
-            "total": 382,
-            "value": 1328004
+            "total": 400,
+            "value": 1337220
           },
           {
             "player": "codex-gpt-5",
@@ -400,14 +400,14 @@
         ],
         "key": "frontier_explorer",
         "leader": "gpt-5.5-pro",
-        "value": 1328004
+        "value": 1337220
       },
       {
         "contenders": [
           {
             "player": "gpt-5.5-pro",
             "rank": 1,
-            "total": 382,
+            "total": 400,
             "value": 390625
           }
         ],
@@ -426,7 +426,7 @@
           {
             "player": "gpt-5.5-pro",
             "rank": 2,
-            "total": 382,
+            "total": 400,
             "value": 0
           }
         ],
@@ -435,7 +435,7 @@
         "value": 0
       }
     ],
-    "transcript_digest": "b9cde651844065bd4f6bece9d89cb3ca537d7796c363a466967b54871132af8e"
+    "transcript_digest": "1e97437344d88054684f2134332bad12690d4749e3d26e62881bbf5d4339c63d"
   },
   "strike_policy": {
     "disqualified_players": [],
