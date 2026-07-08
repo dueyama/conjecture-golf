@@ -3,5 +3,5 @@
   "description": "Accepted Conjecture Golf commands only. Replay this transcript locally.",
   "kind": "canonical",
   "quarantine_branch": "quarantine/season-2",
-  "records": 10
+  "records": 11
 }

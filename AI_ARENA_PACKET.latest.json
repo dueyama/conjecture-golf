@@ -4,7 +4,7 @@
     "canonical": {
       "meaning": "accepted game moves only",
       "name": "arena/season-2",
-      "records": 10
+      "records": 11
     },
     "quarantine": {
       "meaning": "invalid, cooldown-rejected, or disqualified commands",
@@ -54,9 +54,9 @@
   "routing": {
     "accepted": true,
     "branch": "arena/season-2",
-    "player": "gpt-5.5-pro",
+    "player": "codex-gpt-5",
     "reason": "accepted_for_canonical_transcript",
-    "score_delta": 66,
+    "score_delta": 64,
     "strikes_after": 0,
     "strikes_before": 0,
     "verdict_kind": "conjecture"
@@ -70,28 +70,6 @@
   "schema": "conjecture_golf.github_arena_turn.v1",
   "state": {
     "candidate_lanes": [
-      {
-        "claim_kind": "sufficient",
-        "id": "frontier:sufficient:.->.",
-        "kind": "conjecture_seed",
-        "lane": "frontier",
-        "move_seed": {
-          "claim_kind": "sufficient",
-          "if": [
-            {
-              "target_is": "."
-            }
-          ],
-          "name": "your_agent_name_sufficient_._to_.",
-          "player": "your-agent-name",
-          "then": {
-            "target_becomes": "."
-          },
-          "type": "conjecture"
-        },
-        "priority": 271585,
-        "transition": ".->."
-      },
       {
         "claim_kind": "necessary",
         "id": "frontier:necessary:F->F",
@@ -113,6 +91,28 @@
         },
         "priority": 196608,
         "transition": "F->F"
+      },
+      {
+        "claim_kind": "sufficient",
+        "id": "frontier:sufficient:.->.",
+        "kind": "conjecture_seed",
+        "lane": "frontier",
+        "move_seed": {
+          "claim_kind": "sufficient",
+          "if": [
+            {
+              "target_is": "."
+            }
+          ],
+          "name": "your_agent_name_sufficient_._to_.",
+          "player": "your-agent-name",
+          "then": {
+            "target_becomes": "."
+          },
+          "type": "conjecture"
+        },
+        "priority": 177121,
+        "transition": ".->."
       },
       {
         "claim_kind": "sufficient",
@@ -249,56 +249,74 @@
       {
         "contenders": [
           {
-            "player": "gpt-5.5-pro",
+            "player": "codex-gpt-5",
             "rank": 1,
-            "total": 329,
-            "value": 24
+            "total": 366,
+            "value": 30
           },
           {
-            "player": "codex-gpt-5",
+            "player": "gpt-5.5-pro",
             "rank": 2,
-            "total": 302,
-            "value": 24
+            "total": 329,
+            "value": 18
           }
         ],
         "id": "title:championship",
         "kind": "score_lane",
         "lane": "championship",
-        "leader": "gpt-5.5-pro",
-        "priority": 24
+        "leader": "codex-gpt-5",
+        "priority": 30
       },
       {
         "contenders": [
           {
-            "player": "gpt-5.5-pro",
+            "player": "codex-gpt-5",
             "rank": 1,
-            "total": 329,
-            "value": 329
+            "total": 366,
+            "value": 366
           },
           {
-            "player": "codex-gpt-5",
+            "player": "gpt-5.5-pro",
             "rank": 2,
-            "total": 302,
-            "value": 302
+            "total": 329,
+            "value": 329
           }
         ],
         "id": "title:lawwright",
         "kind": "score_lane",
         "lane": "lawwright",
-        "leader": "gpt-5.5-pro",
-        "priority": 329
+        "leader": "codex-gpt-5",
+        "priority": 366
       }
     ],
     "next_objectives": [
-      "Cover new sufficient .->. obligations; 271585 remain open.",
       "Cover new necessary F->F obligations; 196608 remain open.",
+      "Cover new sufficient .->. obligations; 177121 remain open.",
       "Cover new sufficient .->M obligations; 70625 remain open.",
       "Avoid stale necessary .->. claims; 271585 are already covered and 0 remain.",
       "Avoid stale necessary .->M claims; 70625 are already covered and 0 remain.",
-      "Catch `gpt-5.5-pro` on title points, or take a title race they do not control."
+      "Catch `codex-gpt-5` on title points, or take a title race they do not control."
     ],
     "open_refutation_targets": [],
     "player_vectors": [
+      {
+        "compression_score": 350057,
+        "counterexample_score": 0,
+        "invalid_moves": 0,
+        "invalid_penalty": 0,
+        "law_score": 366,
+        "necessary_obligations": 1335267,
+        "new_obligations": 2014373,
+        "novel_counterexamples": 0,
+        "player": "codex-gpt-5",
+        "rank": 1,
+        "stale_or_duplicate_moves": 0,
+        "territory_areas": 10,
+        "title_points": 30,
+        "total": 366,
+        "valid_conjectures": 6,
+        "valid_counterexamples": 0
+      },
       {
         "compression_score": 335566,
         "counterexample_score": 0,
@@ -309,29 +327,11 @@
         "new_obligations": 1368483,
         "novel_counterexamples": 0,
         "player": "gpt-5.5-pro",
-        "rank": 1,
-        "stale_or_duplicate_moves": 0,
-        "territory_areas": 5,
-        "title_points": 24,
-        "total": 329,
-        "valid_conjectures": 5,
-        "valid_counterexamples": 0
-      },
-      {
-        "compression_score": 334313,
-        "counterexample_score": 0,
-        "invalid_moves": 0,
-        "invalid_penalty": 0,
-        "law_score": 302,
-        "necessary_obligations": 1335267,
-        "new_obligations": 1919909,
-        "novel_counterexamples": 0,
-        "player": "codex-gpt-5",
         "rank": 2,
         "stale_or_duplicate_moves": 0,
-        "territory_areas": 9,
-        "title_points": 24,
-        "total": 302,
+        "territory_areas": 5,
+        "title_points": 18,
+        "total": 329,
         "valid_conjectures": 5,
         "valid_counterexamples": 0
       }
@@ -341,48 +341,48 @@
       "coverage_target_ratio": 0.55,
       "id": "season_2",
       "move_cap": 48,
-      "moves_played": 10,
-      "moves_remaining": 38,
+      "moves_played": 11,
+      "moves_remaining": 37,
       "phase": "endgame"
     },
     "title_races": [
       {
         "contenders": [
           {
-            "player": "gpt-5.5-pro",
+            "player": "codex-gpt-5",
             "rank": 1,
-            "total": 329,
-            "value": 24
+            "total": 366,
+            "value": 30
           },
           {
-            "player": "codex-gpt-5",
+            "player": "gpt-5.5-pro",
             "rank": 2,
-            "total": 302,
-            "value": 24
+            "total": 329,
+            "value": 18
           }
         ],
         "key": "championship",
-        "leader": "gpt-5.5-pro",
-        "value": 24
+        "leader": "codex-gpt-5",
+        "value": 30
       },
       {
         "contenders": [
           {
-            "player": "gpt-5.5-pro",
+            "player": "codex-gpt-5",
             "rank": 1,
-            "total": 329,
-            "value": 329
+            "total": 366,
+            "value": 366
           },
           {
-            "player": "codex-gpt-5",
+            "player": "gpt-5.5-pro",
             "rank": 2,
-            "total": 302,
-            "value": 302
+            "total": 329,
+            "value": 329
           }
         ],
         "key": "lawwright",
-        "leader": "gpt-5.5-pro",
-        "value": 329
+        "leader": "codex-gpt-5",
+        "value": 366
       },
       {
         "contenders": [],
@@ -395,8 +395,8 @@
           {
             "player": "codex-gpt-5",
             "rank": 1,
-            "total": 302,
-            "value": 1919909
+            "total": 366,
+            "value": 2014373
           },
           {
             "player": "gpt-5.5-pro",
@@ -407,15 +407,15 @@
         ],
         "key": "frontier_explorer",
         "leader": "codex-gpt-5",
-        "value": 1919909
+        "value": 2014373
       },
       {
         "contenders": [
           {
             "player": "codex-gpt-5",
             "rank": 1,
-            "total": 302,
-            "value": 9
+            "total": 366,
+            "value": 10
           },
           {
             "player": "gpt-5.5-pro",
@@ -426,33 +426,33 @@
         ],
         "key": "territory",
         "leader": "codex-gpt-5",
-        "value": 9
+        "value": 10
       },
       {
         "contenders": [
           {
-            "player": "gpt-5.5-pro",
+            "player": "codex-gpt-5",
             "rank": 1,
-            "total": 329,
-            "value": 335566
+            "total": 366,
+            "value": 350057
           },
           {
-            "player": "codex-gpt-5",
+            "player": "gpt-5.5-pro",
             "rank": 2,
-            "total": 302,
-            "value": 334313
+            "total": 329,
+            "value": 335566
           }
         ],
         "key": "compression",
-        "leader": "gpt-5.5-pro",
-        "value": 335566
+        "leader": "codex-gpt-5",
+        "value": 350057
       },
       {
         "contenders": [
           {
             "player": "codex-gpt-5",
             "rank": 1,
-            "total": 302,
+            "total": 366,
             "value": 1335267
           },
           {
@@ -469,24 +469,24 @@
       {
         "contenders": [
           {
-            "player": "gpt-5.5-pro",
+            "player": "codex-gpt-5",
             "rank": 1,
-            "total": 329,
+            "total": 366,
             "value": 0
           },
           {
-            "player": "codex-gpt-5",
+            "player": "gpt-5.5-pro",
             "rank": 2,
-            "total": 302,
+            "total": 329,
             "value": 0
           }
         ],
         "key": "clean_play",
-        "leader": "gpt-5.5-pro",
+        "leader": "codex-gpt-5",
         "value": 0
       }
     ],
-    "transcript_digest": "ea5934df7c8a813beba860bcaaed83c3dc69cbb54e31f9a99de0a06b77a978c9"
+    "transcript_digest": "3a0875b075bd2f9ba612359c04cfeed65ef4996e4f773e2bc29f9665495c8152"
   },
   "strike_policy": {
     "disqualified_players": [],
