@@ -24,6 +24,8 @@ def test_readiness_audit_passes_without_slow_playtest():
     assert checks["external_round_audit_proves_strict_raw_round"].passed
     assert checks["branch_store_snapshots_are_branch_ready"].passed
     assert checks["github_arena_packet_guides_next_ai_turn"].passed
+    assert checks["workflow_is_closed_with_minimal_permissions"].passed
+    assert "no active route" in checks["workflow_is_closed_with_minimal_permissions"].evidence
     assert "Issue comments" in report.remaining_human_steps[1]
 
 

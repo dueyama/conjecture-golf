@@ -5,7 +5,7 @@ on:
     types: [created]
 
 permissions:
-  contents: write
+  contents: read
   issues: write
 
 jobs:
@@ -25,15 +25,15 @@ jobs:
 
           issue_number = os.environ["ISSUE_NUMBER"]
           labels = set(json.loads(os.environ.get("ISSUE_LABELS_JSON") or "[]"))
-          active_arena_url = "https://github.com/dueyama/conjecture-golf/issues/3"
+          season_archive_url = "https://github.com/dueyama/conjecture-golf/blob/main/seasons/season_2_summary.md"
 
           route = {
-              "status": "redirect",
+              "status": "closed",
               "rules_ref": "main",
               "season_spec": "",
               "canonical_branch": "arena/season-2",
               "quarantine_branch": "quarantine/season-2",
-              "message": "This Issue is not the active Conjecture Golf arena.",
+              "message": "Conjecture Golf is closed. No further moves are accepted.",
           }
           if issue_number == "1" or "season-0" in labels:
               route.update(
@@ -43,7 +43,7 @@ jobs:
                   quarantine_branch="quarantine/season-0",
                   message="Season 0 is closed. No further moves are accepted for this Issue.",
               )
-          elif issue_number == "2" or ("season-1" in labels and "active" in labels):
+          elif issue_number == "2" or "season-1" in labels:
               route.update(
                   status="closed",
                   rules_ref="main",
@@ -52,20 +52,20 @@ jobs:
                   quarantine_branch="quarantine/season-1",
                   message="Season 1 is closed. No further moves are accepted for this Issue. The Season 1 transcript remains archived on arena/season-1.",
               )
-          elif issue_number == "3" or ("season-2" in labels and "active" in labels):
+          elif issue_number == "3" or "season-2" in labels:
               route.update(
-                  status="active",
-                  rules_ref="season-2-rules",
-                  season_spec="seasons/season_2.json",
+                  status="closed",
+                  rules_ref="main",
+                  season_spec="",
                   canonical_branch="arena/season-2",
                   quarantine_branch="quarantine/season-2",
-                  message="Season 2 is the active Conjecture Golf arena.",
+                  message="Season 2 is closed. No further moves are accepted for this Issue.",
               )
 
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
               for key, value in route.items():
                   print(f"{key}={value}", file=output)
-              print(f"active_arena_url={active_arena_url}", file=output)
+              print(f"season_archive_url={season_archive_url}", file=output)
           PY
       - uses: actions/checkout@v4
         with:
@@ -105,7 +105,7 @@ jobs:
           CG_ARENA_GATE: "1"
           CG_ARENA_STATUS: ${{ steps.route.outputs.status }}
           CG_ARENA_STATUS_MESSAGE: ${{ steps.route.outputs.message }}
-          CG_ACTIVE_ARENA_URL: ${{ steps.route.outputs.active_arena_url }}
+          CG_SEASON_ARCHIVE_URL: ${{ steps.route.outputs.season_archive_url }}
           CG_RULES_REF: ${{ steps.route.outputs.rules_ref }}
           CG_SEASON_SPEC: ${{ steps.route.outputs.season_spec }}
           CG_REVEAL_POLICY: redacted
@@ -123,41 +123,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh issue comment "${{ github.event.issue.number }}" --repo "${{ github.repository }}" --body-file verdict.md
-      - name: Prepare canonical arena latest files
-        if: success() && steps.route.outputs.status == 'active' && hashFiles('arena-branch-store/**/transcript.jsonl') != ''
-        env:
-          CG_BRANCH_STORE_DIR: arena-branch-store
-          CG_CANONICAL_BRANCH: ${{ steps.route.outputs.canonical_branch }}
-        run: |
-          python - <<'PY'
-          import json
-          import os
-          import re
-          from pathlib import Path
-
-          verdict = Path("verdict.md").read_text(encoding="utf-8")
-          marker = "## AI Arena Packet"
-          marker_index = verdict.rfind(marker)
-          if marker_index < 0:
-              raise SystemExit("AI Arena Packet marker not found in verdict.md")
-          match = re.search(r"```json\n(.*?)\n```", verdict[marker_index:], re.S)
-          if match is None:
-              raise SystemExit("AI Arena Packet JSON fence not found in verdict.md")
-          packet = json.loads(match.group(1))
-          out = Path(os.environ["CG_BRANCH_STORE_DIR"]).joinpath(
-              *os.environ["CG_CANONICAL_BRANCH"].split("/")
-          ) / "AI_ARENA_PACKET.latest.json"
-          out.parent.mkdir(parents=True, exist_ok=True)
-          out.write_text(json.dumps(packet, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-          PY
-          cat >> "${CG_BRANCH_STORE_DIR}/${CG_CANONICAL_BRANCH}/README.md" <<'EOF'
-
-          ## Latest AI Arena Packet
-
-          `AI_ARENA_PACKET.latest.json` is the latest machine-readable state for
-          constrained AI players. Refresh it after every `/cg` verdict before
-          choosing a move.
-          EOF
       - name: Upload routing artifacts
         if: always() && hashFiles('arena-routing.json') != ''
         uses: actions/upload-artifact@v4
@@ -168,30 +133,3 @@ jobs:
             arena-transcript.jsonl
             quarantine-transcript.jsonl
             arena-branch-store
-      - name: Publish canonical arena branch
-        if: success() && steps.route.outputs.status == 'active' && hashFiles('arena-branch-store/**/AI_ARENA_PACKET.latest.json') != ''
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          PUBLISH_BRANCH: ${{ steps.route.outputs.canonical_branch }}
-          CG_BRANCH_STORE_DIR: arena-branch-store
-        run: |
-          set -euo pipefail
-          publish_dir="$(mktemp -d)"
-          git init "$publish_dir"
-          git -C "$publish_dir" config user.name "github-actions[bot]"
-          git -C "$publish_dir" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git -C "$publish_dir" remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-          if git -C "$publish_dir" fetch --depth=1 origin "refs/heads/${PUBLISH_BRANCH}:refs/remotes/origin/${PUBLISH_BRANCH}"; then
-            git -C "$publish_dir" checkout -B "$PUBLISH_BRANCH" "refs/remotes/origin/${PUBLISH_BRANCH}"
-            git -C "$publish_dir" rm -r --quiet . || true
-          else
-            git -C "$publish_dir" checkout --orphan "$PUBLISH_BRANCH"
-          fi
-          cp -R "$GITHUB_WORKSPACE/${CG_BRANCH_STORE_DIR}/${PUBLISH_BRANCH}/." "$publish_dir/"
-          git -C "$publish_dir" add -A
-          if git -C "$publish_dir" diff --cached --quiet; then
-            echo "Canonical arena branch is already current."
-            exit 0
-          fi
-          git -C "$publish_dir" commit -m "Update Conjecture Golf arena snapshot [skip ci]"
-          git -C "$publish_dir" push origin "HEAD:${PUBLISH_BRANCH}"

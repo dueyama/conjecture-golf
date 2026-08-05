@@ -33,7 +33,9 @@ from .replay import apply_command, replay_records
 from .season_catalog import load_optional_compiled_season
 
 DEFAULT_MIN_PLAYER_INTERVAL_SECONDS = 6 * 60 * 60
-DEFAULT_ACTIVE_ARENA_URL = "https://github.com/dueyama/conjecture-golf/issues/3"
+DEFAULT_SEASON_ARCHIVE_URL = (
+    "https://github.com/dueyama/conjecture-golf/blob/main/seasons/season_2_summary.md"
+)
 
 
 def _env_bool(name: str, *, default: bool) -> bool:
@@ -67,19 +69,19 @@ def _write_verdict(markdown: str) -> None:
         f.write(markdown)
 
 
-def _status_markdown(status: str, *, active_arena_url: str, message: str = "") -> str:
+def _status_markdown(status: str, *, season_archive_url: str, message: str = "") -> str:
     if status == "closed":
-        detail = message or "Season 0 is closed. No further moves are accepted for this Issue."
+        detail = message or "Conjecture Golf is closed. No further moves are accepted."
         return (
             "**Conjecture Golf season closed**\n\n"
             f"{detail}\n\n"
-            f"Current arena information: {active_arena_url}\n"
+            f"Season archive: {season_archive_url}\n"
         )
     detail = message or "This Issue is not the active Conjecture Golf arena."
     return (
         "**Conjecture Golf arena moved**\n\n"
         f"{detail}\n\n"
-        f"Current arena information: {active_arena_url}\n"
+        f"Season archive: {season_archive_url}\n"
     )
 
 
@@ -143,43 +145,55 @@ def main() -> int:
     issue_number = os.environ.get("ISSUE_NUMBER", "")
     repo = os.environ.get("GH_REPO") or os.environ.get("GITHUB_REPOSITORY", "")
     author_login = os.environ.get("COMMENT_AUTHOR", "")
-    min_player_interval_seconds = int(
-        os.environ.get("CG_MIN_PLAYER_INTERVAL_SECONDS", str(DEFAULT_MIN_PLAYER_INTERVAL_SECONDS))
-    )
-    season_scoring = _env_bool("CG_SEASON_SCORING", default=True)
-    reveal_policy = os.environ.get("CG_REVEAL_POLICY", "redacted" if season_scoring else "full")
-    arena_gate = _env_bool("CG_ARENA_GATE", default=True)
-    canonical_branch = os.environ.get("CG_CANONICAL_BRANCH", DEFAULT_CANONICAL_BRANCH)
-    quarantine_branch = os.environ.get("CG_QUARANTINE_BRANCH", DEFAULT_QUARANTINE_BRANCH)
-    arena_status = os.environ.get("CG_ARENA_STATUS", "active").strip().lower()
+    arena_status = os.environ.get("CG_ARENA_STATUS", "closed").strip().lower()
     arena_status_message = os.environ.get("CG_ARENA_STATUS_MESSAGE", "").strip()
-    active_arena_url = os.environ.get("CG_ACTIVE_ARENA_URL", DEFAULT_ACTIVE_ARENA_URL).strip()
-    season_spec_path = os.environ.get("CG_SEASON_SPEC", "").strip() or None
-    season = load_optional_compiled_season(season_spec_path)
-    invalid_strikes_to_disqualify = int(
-        os.environ.get("CG_INVALID_STRIKES_TO_DISQUALIFY", str(DEFAULT_INVALID_STRIKES_TO_DISQUALIFY))
-    )
-    rules_ref = os.environ.get("CG_RULES_REF", "").strip()
-    rules_commit = os.environ.get("CG_RULES_COMMIT", "").strip() or _git_head_commit()
+    season_archive_url = os.environ.get(
+        "CG_SEASON_ARCHIVE_URL", DEFAULT_SEASON_ARCHIVE_URL
+    ).strip()
 
     if not issue_number or not repo:
         print("Missing ISSUE_NUMBER or GH_REPO/GITHUB_REPOSITORY", file=sys.stderr)
         return 2
 
     try:
-        if arena_status in {"closed", "redirect"}:
+        # Only an explicit, recognized active status may enter the write path.
+        # Missing and unknown statuses fail closed.
+        if arena_status != "active":
             current_comment = _current_comment()
             if command_from_issue_comment(current_comment) is None:
                 print("Not a Conjecture Golf command; nothing to do.")
                 return 0
             markdown = _status_markdown(
-                arena_status,
-                active_arena_url=active_arena_url,
+                "redirect" if arena_status == "redirect" else "closed",
+                season_archive_url=season_archive_url,
                 message=arena_status_message,
             )
             _write_verdict(markdown)
             print(markdown)
             return 0
+
+        min_player_interval_seconds = int(
+            os.environ.get(
+                "CG_MIN_PLAYER_INTERVAL_SECONDS", str(DEFAULT_MIN_PLAYER_INTERVAL_SECONDS)
+            )
+        )
+        season_scoring = _env_bool("CG_SEASON_SCORING", default=True)
+        reveal_policy = os.environ.get(
+            "CG_REVEAL_POLICY", "redacted" if season_scoring else "full"
+        )
+        arena_gate = _env_bool("CG_ARENA_GATE", default=True)
+        canonical_branch = os.environ.get("CG_CANONICAL_BRANCH", DEFAULT_CANONICAL_BRANCH)
+        quarantine_branch = os.environ.get("CG_QUARANTINE_BRANCH", DEFAULT_QUARANTINE_BRANCH)
+        season_spec_path = os.environ.get("CG_SEASON_SPEC", "").strip() or None
+        season = load_optional_compiled_season(season_spec_path)
+        invalid_strikes_to_disqualify = int(
+            os.environ.get(
+                "CG_INVALID_STRIKES_TO_DISQUALIFY",
+                str(DEFAULT_INVALID_STRIKES_TO_DISQUALIFY),
+            )
+        )
+        rules_ref = os.environ.get("CG_RULES_REF", "").strip()
+        rules_commit = os.environ.get("CG_RULES_COMMIT", "").strip() or _git_head_commit()
 
         if arena_gate:
             current_comment = _current_comment()

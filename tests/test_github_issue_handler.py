@@ -28,6 +28,7 @@ def test_issue_handler_excludes_current_comment_by_id_not_body(monkeypatch, tmp_
     monkeypatch.setenv("COMMENT_ID", "2")
     monkeypatch.setenv("ISSUE_NUMBER", "7")
     monkeypatch.setenv("GH_REPO", "owner/repo")
+    monkeypatch.setenv("CG_ARENA_STATUS", "active")
     monkeypatch.setenv("CG_MIN_PLAYER_INTERVAL_SECONDS", "3600")
     monkeypatch.setenv("VERDICT_FILE", str(verdict_file))
 
@@ -49,6 +50,7 @@ def test_issue_handler_arena_gate_quarantines_malformed_current_command(monkeypa
     monkeypatch.setenv("COMMENT_ID", "3")
     monkeypatch.setenv("ISSUE_NUMBER", "7")
     monkeypatch.setenv("GH_REPO", "owner/repo")
+    monkeypatch.setenv("CG_ARENA_STATUS", "active")
     monkeypatch.setenv("VERDICT_FILE", str(verdict_file))
     monkeypatch.setenv("CG_CANONICAL_TRANSCRIPT_FILE", str(canonical_file))
     monkeypatch.setenv("CG_QUARANTINE_TRANSCRIPT_FILE", str(quarantine_file))
@@ -87,7 +89,10 @@ def test_issue_handler_closed_season_does_not_fetch_or_write_streams(monkeypatch
     monkeypatch.setenv("ISSUE_NUMBER", "1")
     monkeypatch.setenv("GH_REPO", "owner/repo")
     monkeypatch.setenv("CG_ARENA_STATUS", "closed")
-    monkeypatch.setenv("CG_ACTIVE_ARENA_URL", "https://github.com/dueyama/conjecture-golf/issues/2")
+    monkeypatch.setenv(
+        "CG_SEASON_ARCHIVE_URL",
+        "https://github.com/dueyama/conjecture-golf/blob/main/seasons/season_2_summary.md",
+    )
     monkeypatch.setenv("VERDICT_FILE", str(verdict_file))
     monkeypatch.setenv("CG_CANONICAL_TRANSCRIPT_FILE", str(tmp_path / "canonical.jsonl"))
     monkeypatch.setenv("CG_QUARANTINE_TRANSCRIPT_FILE", str(tmp_path / "quarantine.jsonl"))
@@ -96,8 +101,8 @@ def test_issue_handler_closed_season_does_not_fetch_or_write_streams(monkeypatch
 
     verdict = verdict_file.read_text(encoding="utf-8")
     assert "season closed" in verdict
-    assert "Current arena information" in verdict
-    assert "issues/2" in verdict
+    assert "Season archive" in verdict
+    assert "seasons/season_2_summary.md" in verdict
     assert not (tmp_path / "canonical.jsonl").exists()
     assert not (tmp_path / "quarantine.jsonl").exists()
 
@@ -119,7 +124,10 @@ def test_issue_handler_closed_season_1_archive_does_not_fetch_or_write_streams(
     monkeypatch.setenv("GH_REPO", "owner/repo")
     monkeypatch.setenv("CG_ARENA_STATUS", "closed")
     monkeypatch.setenv("CG_ARENA_STATUS_MESSAGE", "Season 1 is closed.")
-    monkeypatch.setenv("CG_ACTIVE_ARENA_URL", "https://github.com/dueyama/conjecture-golf")
+    monkeypatch.setenv(
+        "CG_SEASON_ARCHIVE_URL",
+        "https://github.com/dueyama/conjecture-golf/blob/main/seasons/season_2_summary.md",
+    )
     monkeypatch.setenv("VERDICT_FILE", str(verdict_file))
     monkeypatch.setenv("CG_CANONICAL_TRANSCRIPT_FILE", str(tmp_path / "canonical.jsonl"))
     monkeypatch.setenv("CG_QUARANTINE_TRANSCRIPT_FILE", str(tmp_path / "quarantine.jsonl"))
@@ -129,7 +137,7 @@ def test_issue_handler_closed_season_1_archive_does_not_fetch_or_write_streams(
     verdict = verdict_file.read_text(encoding="utf-8")
     assert "season closed" in verdict
     assert "Season 1 is closed." in verdict
-    assert "Current arena information" in verdict
+    assert "Season archive" in verdict
     assert not (tmp_path / "canonical.jsonl").exists()
     assert not (tmp_path / "quarantine.jsonl").exists()
 
@@ -144,15 +152,51 @@ def test_issue_workflow_routes_season_1_issue_as_closed_archive():
     assert 'status="active"' not in season_1_block
 
 
-def test_issue_workflow_routes_season_2_issue_as_active_arena():
+def test_issue_workflow_routes_season_2_issue_as_closed_archive():
     workflow = Path(".github/workflows/issue-comment.yml").read_text(encoding="utf-8")
     season_2_block = workflow.split('elif issue_number == "3"')[1].split("with open")[0]
 
-    assert 'status="active"' in season_2_block
-    assert 'rules_ref="season-2-rules"' in season_2_block
-    assert 'season_spec="seasons/season_2.json"' in season_2_block
+    assert 'status="closed"' in season_2_block
+    assert 'status="active"' not in season_2_block
+    assert 'rules_ref="main"' in season_2_block
+    assert 'season_spec=""' in season_2_block
     assert 'canonical_branch="arena/season-2"' in season_2_block
     assert 'quarantine_branch="quarantine/season-2"' in season_2_block
+
+
+def test_issue_workflow_has_no_active_or_canonical_publish_path():
+    workflow = Path(".github/workflows/issue-comment.yml").read_text(encoding="utf-8")
+
+    assert "contents: read" in workflow
+    assert "contents: write" not in workflow
+    assert 'status="active"' not in workflow
+    assert "seasons/season_2_summary.md" in workflow
+    assert "Prepare canonical arena latest files" not in workflow
+    assert "Publish canonical arena branch" not in workflow
+
+
+def test_issue_handler_defaults_closed_and_unknown_status_fails_closed(monkeypatch, tmp_path: Path):
+    def fail_fetch(repo, issue_number):  # pragma: no cover - called only on regression
+        raise AssertionError("closed and unknown statuses must not fetch issue comments")
+
+    monkeypatch.setattr(github_issue_handler, "fetch_issue_comments", fail_fetch)
+    monkeypatch.setenv("COMMENT_BODY", '/cg {"type":"score","player":"late"}')
+    monkeypatch.setenv("COMMENT_AUTHOR", "late-user")
+    monkeypatch.setenv("ISSUE_NUMBER", "3")
+    monkeypatch.setenv("GH_REPO", "owner/repo")
+    monkeypatch.setenv("CG_MIN_PLAYER_INTERVAL_SECONDS", "not-used-while-closed")
+    monkeypatch.setenv("CG_SEASON_SPEC", "missing-while-closed.json")
+
+    default_verdict = tmp_path / "default-verdict.md"
+    monkeypatch.setenv("VERDICT_FILE", str(default_verdict))
+    assert github_issue_handler.main() == 0
+    assert "Season archive" in default_verdict.read_text(encoding="utf-8")
+
+    unknown_verdict = tmp_path / "unknown-verdict.md"
+    monkeypatch.setenv("CG_ARENA_STATUS", "unexpected")
+    monkeypatch.setenv("VERDICT_FILE", str(unknown_verdict))
+    assert github_issue_handler.main() == 0
+    assert "season closed" in unknown_verdict.read_text(encoding="utf-8")
 
 
 def test_issue_handler_active_season_1_packet_uses_season_spec(monkeypatch, tmp_path: Path):
@@ -169,6 +213,7 @@ def test_issue_handler_active_season_1_packet_uses_season_spec(monkeypatch, tmp_
     monkeypatch.setenv("COMMENT_ID", "31")
     monkeypatch.setenv("ISSUE_NUMBER", "2")
     monkeypatch.setenv("GH_REPO", "owner/repo")
+    monkeypatch.setenv("CG_ARENA_STATUS", "active")
     monkeypatch.setenv("CG_SEASON_SPEC", "seasons/season_1.json")
     monkeypatch.setenv("CG_CANONICAL_BRANCH", "arena/season-1")
     monkeypatch.setenv("CG_QUARANTINE_BRANCH", "quarantine/season-1")

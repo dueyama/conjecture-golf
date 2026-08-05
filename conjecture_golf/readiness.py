@@ -387,15 +387,13 @@ def run_readiness(
     workflow = _workflow_text()
     readme = _file_text("README.md")
     security = _file_text("SECURITY.md")
-    workflow_has_active_fixed_rules_route = (
-        "season-1-rules" in workflow
-        and "CG_SEASON_SPEC" in workflow
-        and "steps.route.outputs.rules_ref" in workflow
-    )
-    workflow_has_closed_archive_route = (
-        "Season 1 is closed" in workflow
+    workflow_has_closed_archive_routes = (
+        "Season 0 is closed" in workflow
+        and "Season 1 is closed" in workflow
+        and "Season 2 is closed" in workflow
         and 'status="closed"' in workflow
-        and "steps.route.outputs.rules_ref" in workflow
+        and 'status="active"' not in workflow
+        and "seasons/season_2_summary.md" in workflow
     )
 
     checks = [
@@ -466,13 +464,15 @@ def run_readiness(
             evidence="Issue verdict comments include a compact JSON AI Arena Packet with routing, branch, strike, title-race, and candidate-lane state.",
         ),
         _check(
-            "workflow_uses_minimal_permissions_and_gate",
-            "contents: write" in workflow
+            "workflow_is_closed_with_minimal_permissions",
+            "contents: read" in workflow
             and "issues: write" in workflow
             and "CG_ARENA_GATE" in workflow
-            and (workflow_has_active_fixed_rules_route or workflow_has_closed_archive_route),
+            and workflow_has_closed_archive_routes
+            and "Prepare canonical arena latest files" not in workflow
+            and "Publish canonical arena branch" not in workflow,
             category="github_alpha",
-            evidence="issue-comment workflow uses scoped contents write, write issues, arena gate mode, and routed fixed-rules or closed-archive handling.",
+            evidence="issue-comment workflow has read-only contents permission, write issues permission, no active route or canonical publish path, and directs all seasons to the Season 2 archive.",
         ),
         _check(
             "public_comments_are_reconstructable",
@@ -538,9 +538,9 @@ def run_readiness(
         passed=passed,
         checks=checks,
         remaining_human_steps=[
-            "Do not publish to GitHub until the operator explicitly asks.",
-            "Public Issue comments remain the source of truth; the arena branch is an AI-readable mirror of canonical state.",
-            "Keep chat-only external trial tooling optional; it is not required for the GitHub-native arena loop.",
+            "Confirm the final Season 2 transcript digest before publishing the closure.",
+            "Public Issue comments and the frozen Season 2 transcript remain the source of truth.",
+            "After the closure commit, final tag, and Issue close, archive the GitHub repository to make it read-only.",
         ],
     )
 
